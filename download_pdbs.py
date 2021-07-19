@@ -9,7 +9,7 @@ import shutil
 dms_dir = os.path.dirname(os.path.realpath(__file__))
 dataset_dir = os.path.join(dms_dir, "datasets")
 train_val_dir = os.path.join(dms_dir, "protein_data", "train_val")
-pdbs_dir = "/workspace7/torchmd-AD/train_val_pdb/"
+pdbs_dir = "/workspace7/torchmd-AD/train_val_pdb/train"
 
 
 # Extract the pdb and chain names of a file 
@@ -17,7 +17,8 @@ def extract_pdb_code(name_w_chain):
     """ Extract the pdb code and chain from a string with format:
         {pdbcode}_{chain}
     """
-    input_name = re.compile(r"^(?P<name>[a-zA-Z0-9]+)(\_)(?P<chain>[a-zA-Z]$)")
+    input_name = re.compile(r"^(?P<name>[a-zA-Z0-9]+)(\_)(?P<chain>[a-zA-Z0-9]+$)")
+    print(name_w_chain)
     m = input_name.match(name_w_chain)
     pdbcode = m.group("name")
     chain = m.group("chain")
@@ -70,18 +71,19 @@ def extract_chains(pdb_chains, input_path, output_path):
     for protein in pdb_chains:
         
         pdbfnpath = input_path + protein + '.pdb'
+        if os.path.isfile(pdbfnpath):
         
-        parser=PDBParser()
-        io=PDBIO()
-        structure = parser.get_structure('X', pdbfnpath)
+            parser=PDBParser()
+            io=PDBIO()
+            structure = parser.get_structure('X', pdbfnpath)
         
-        for chain1 in pdb_chains[protein]:
+            for chain1 in pdb_chains[protein]:
             
-            for chain2 in structure.get_chains():
+                for chain2 in structure.get_chains():
                 
-                if chain1 == chain2.get_id():       
-                    io.set_structure(chain2)
-                    io.save(output_path + protein + '_' + chain2.get_id() + ".pdb", NonHetSelect())
+                    if chain1 == chain2.get_id():       
+                        io.set_structure(chain2)
+                        io.save(output_path + protein + '_' + chain2.get_id() + ".pdb", NonHetSelect())
 
     
 class NonHetSelect(Select):
@@ -103,8 +105,10 @@ if __name__ == "__main__":
     for file in train_proteins:
         download_pdb(file, pdbs_dir + 'downloads/')
     
+    # Dictionary with proteins and their chains
     pdb_chains = pdb_chain_to_dict(train_proteins)    
     
+    # Extract desired chains from downloaded proteins
     extract_chains(pdb_chains, pdbs_dir + 'downloads/', pdbs_dir)
     
     shutil.rmtree(tmp_dir) # rm tmp directory
