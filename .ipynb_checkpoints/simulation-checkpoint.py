@@ -37,13 +37,6 @@ def setup(args):
     return mol, system
 
 
-#class Simulator(torch.nn.Module):
-#    def __init__(self, ff_distances, ff_angles, ff_dihedrals):
-#        super(Simulator, self).__init__()
-#        self.ff_distances = torch.nn.Parameter(ff_distances)
-#        self.ff_angles    = torch.nn.Parameter(ff_angles)
-#        self.ff_dihedrals = torch.nn.Parameter(ff_dihedrals)
-
 if __name__ == "__main__":
     args = get_args()
     mol, system = setup(args)
