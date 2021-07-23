@@ -20,7 +20,7 @@ def get_args(arguments=None):
 dms_dir = os.path.dirname(os.path.realpath(__file__))
 dataset_dir = os.path.join(dms_dir, "datasets")
 train_val_dir = os.path.join(dms_dir, "protein_data", "train_val")
-pdbs_dir = "/workspace7/torchmd-AD/train_val_torchmd/pdb"
+pdbs_dir = "/workspace7/torchmd-AD/train_val_torchmd/pdb/"
 psfs_dir = "/workspace7/torchmd-AD/train_val_torchmd/psf"
 
 # Extract the pdb and chain names of a file 
@@ -113,33 +113,28 @@ if __name__ == "__main__":
         val_proteins   = [l.rstrip() for l in open(os.path.join(dataset_dir, "val.txt"  ))]
         
         # Download all the files in pdb format
-        tmp_dir = pdbs_dir + '/downloads/'
-        os.mkdir(tmp_dir) # tmp directory to save full pdbs
+        tmp_dir = os.path.join(pdbs_dir, 'downloads')
         
-        i = 0
+        if not os.path.isdir(tmp_dir):
+            os.mkdir(tmp_dir) # tmp directory to save full pdbs
+        
         for file in train_proteins:
-            download_pdb(file, pdbs_dir + '/downloads/')
-            i += 1
-            if i == 10:
-                break
+            download_pdb(file, os.path.join(pdbs_dir, 'downloads'))
         for file in val_proteins:
-            download_pdb(file, pdbs_dir + '/downloads/')
-            i += 1
-            if i == 20:
-                break
+            download_pdb(file, os.path.join(pdbs_dir, 'downloads'))
                 
         # Dictionary with proteins and their chains
         pdb_chains = pdb_chain_to_dict(train_proteins)    
     
         # Extract desired chains from downloaded proteins
-        extract_chains(pdb_chains, pdbs_dir + '/downloads/', pdbs_dir)
-    
+        extract_chains(pdb_chains, os.path.join(pdbs_dir, 'downloads/'), pdbs_dir + '/')
+        
         shutil.rmtree(tmp_dir) # rm tmp directory
     
     elif args.psfs:
         # Transform the pdbs to psfs
         for file in os.listdir(pdbs_dir):
-            PDB_file = pdbs_dir + '/pdb/' + file
-            PSF_file = psfs_dir + '/psf/' + file[:-4] + '.psf'
+            PDB_file = os.path.join(pdbs_dir, file)
+            PSF_file = os.path.join(psfs_dir, file[:-4] + '.psf')
             pdb2psf_CA(PDB_file, PSF_file)
             # TODO: SOLVE RUNTIME ERROR
