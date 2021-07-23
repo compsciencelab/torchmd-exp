@@ -1220,7 +1220,7 @@ bonds:
   (CAY, CAY):
     k0: 70.76909687873237
     req: 3.840668421322776
-    
+
 dihedrals:
   (X, X, X, X):
     terms:
