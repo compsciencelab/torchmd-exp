@@ -2,3 +2,5 @@ Untitled.ipynb
 greener.py
 rmsd.py
 .ipynb_checkpoints
+tests
+__pycache__

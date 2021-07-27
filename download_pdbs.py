@@ -12,6 +12,7 @@ def get_args(arguments=None):
     parser = argparse.ArgumentParser(description='TorchMD-AD-download', prefix_chars='--')
     parser.add_argument('--pdbs', default=None, help='Download PDBs')
     parser.add_argument('--psfs', default=None, help='PDBs to PSFs')
+    parser.add_argument('--atomsel', default='CA', help='Selects only atoms from structure')
     
     args = parser.parse_args(args=arguments)
 
@@ -75,7 +76,7 @@ def pdb_chain_to_dict(pdb_chain_list):
             pdb_chains[pdbn].append(chain)
     return pdb_chains
     
-def extract_chains(pdb_chains, input_path, output_path):
+def extract_chains(pdb_chains, pdb_atoms, input_path, output_path):
     """ Given a dictionary with pdb codes as keys and a list of chains as value and the path of pdb files:
         Return: the chains of each protein that are in the dictionary as a pdb file. 
     """
@@ -92,17 +93,22 @@ def extract_chains(pdb_chains, input_path, output_path):
             
                 for chain2 in structure.get_chains():
                 
-                    if chain1 == chain2.get_id():       
+                    if chain1 == chain2.get_id():
+                                                            
                         io.set_structure(chain2)
-                        io.save(output_path + protein + '_' + chain2.get_id() + ".pdb", NonHetSelect())
-
+                        io.save(output_path + protein + '_' + chain2.get_id() + ".pdb", NonHetSelect(pdb_atoms))
+            
 
 class NonHetSelect(Select):
     """ Avoid selecting heteroatoms from a structure"""
+    def __init__(self, atoms):
+        self.atom = atoms
     
     def accept_residue(self, residue):
         return 1 if residue.id[0] == " " else 0
-
+    def accept_atom(self, atom):
+        """ Select an atom from the structure. Now is set to get only the CA"""
+        return 1 if atom.id == self.atom else 0
 
 
 if __name__ == "__main__":
@@ -122,12 +128,12 @@ if __name__ == "__main__":
             download_pdb(file, os.path.join(pdbs_dir, 'downloads'))
         for file in val_proteins:
             download_pdb(file, os.path.join(pdbs_dir, 'downloads'))
-                
+            
         # Dictionary with proteins and their chains
         pdb_chains = pdb_chain_to_dict(train_proteins)    
     
         # Extract desired chains from downloaded proteins
-        extract_chains(pdb_chains, os.path.join(pdbs_dir, 'downloads/'), pdbs_dir + '/')
+        extract_chains(pdb_chains, args.atomsel ,os.path.join(pdbs_dir, 'downloads/'), pdbs_dir + '/')
         
         shutil.rmtree(tmp_dir) # rm tmp directory
     
@@ -137,4 +143,4 @@ if __name__ == "__main__":
             PDB_file = os.path.join(pdbs_dir, file)
             PSF_file = os.path.join(psfs_dir, file[:-4] + '.psf')
             pdb2psf_CA(PDB_file, PSF_file)
-            # TODO: SOLVE RUNTIME ERROR
+            # TODO: SOLVE GLX ERROR
