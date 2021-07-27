@@ -14,7 +14,7 @@ import os
 import shutil 
 from tqdm import tqdm
 from train import train
-from propagator import Propagator
+from propagator import Propagator, rmsd
 
 FS2NS=1E-6
 
@@ -142,9 +142,13 @@ if __name__ == "__main__":
     
     new_pos, new_vel = propagator(system.pos, system.vel, niter=100)
     
+    print(rmsd(new_pos, new_pos))
+    
+    print(new_pos[0])
+    print(system.pos[0])
     #precision = precisionmap[args.precision]
     #ff = ForceField.create(mol, None)
     #parameters = Parameters(ff, mol, precision=precision)
     
-# train: --structure /workspace7/torchmd-AD/train_val_pdb/train/1WQJ_I.pdb
-# topo: --topology /workspace7/torchmd-AD/train_val_psf/train/1WQJ_I.psf
+# train: --structure /workspace7/torchmd-AD/train_val_torchmd/pdb/1WQJ_I.pdb
+# topo: --topology /workspace7/torchmd-AD/train_val_torchmd/psf/1WQJ_I.psf
