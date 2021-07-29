@@ -6,87 +6,48 @@ from moleculekit.molecule import Molecule
 import numpy as np
 import copy
 
-def n_bonds(ff):
-    return len(ff.prm('bonds'))
-
-
 class Propagator(torch.nn.Module):
     def __init__(
         self,
-        system,
-        forces,
-        bond_params,
-        device = 'cpu',
+        systembox,
         timestep=1.0,
-        gamma=0.1,
-        T=None,
-        dtype = torch.double,
+        langevin_gamma=0.,
+        temperature = None,
     ):  
         super(Propagator, self).__init__()
-        self.T = T
-        self.device = device
+        self.temperature = temperature
+        self.device = systembox.device
         self.timestep = timestep
-        self.system = system
-        self.forces = forces
-        self.gamma = gamma
-        self.dtype = dtype
+        self.systembox = systembox
+        self.langevin_gamma = langevin_gamma
         
-        self.bond_params = torch.nn.Parameter(bond_params)
+        self.bond_params = torch.nn.Parameter(
+            torch.tensor(
+            systembox.forces.par.bond_params,
+            dtype = systembox.dtype,
+            device = systembox.device
+            )
+        )
 
     def forward(self, pos, vel, niter):
-        system = copy.deepcopy(self.system)
-        forces = copy.deepcopy(self.forces)
+        systembox = copy.deepcopy(self.systembox)
         integrator = Integrator(
-            system, 
-            forces, 
+            systembox.system, 
+            systembox.forces, 
             timestep = self.timestep, 
-            device = self.device, 
-            gamma = self.gamma, 
-            T=self.T
+            device = systembox.device, 
+            gamma = self.langevin_gamma, 
+            T=self.temperature
         )
-        system.pos = pos
-        system.vel = vel
+        systembox.system.pos[:] = pos
+        systembox.system.vel[:] = vel
         integrator.step(niter=niter)
+
+        return systembox.system.pos, systembox.system.vel
+    
+    #def _apply_ff_parameters(self, forces):
+    #    self.bond_params[:] = forces.par.bond_params
         
-        return system.pos, system.vel
-    
-    
-    
-
-#class ParameterLogger:
-#    """Write parameters to a npz file during optimization."""
-#    def __init__(self, filename=None, defaults=defaults, flush_interval=10):
-#        default_filename = (
-#            datetime.datetime.now()
-#            .strftime("learn_%Y-%m-%d_%Hh%Mm%Ss.npz")
-#        )
-#        self.filename = default_filename if filename is None else filename
-#        self.defaults = defaults
-#        self.data = {
-#            key: [] for key in self.defaults
-#        }
-#        self.data["epoch"] = []
-#        self.data["it"] = []
-#        self.data["loss"] = []
-#        self.flush_interval = flush_interval
-#        self.i = 0
-#    
-#    def __call__(self, epoch, it, loss, propagator):
-#        self.i += 1
-#        for key in defaults:
-#            assert hasattr(propagator, key)
-#        for key in self.defaults:
-#            self.data[key].append(getattr(propagator, key).clone().detach().cpu().numpy())
-#        self.data["epoch"].append(epoch)
-#        self.data["it"].append(it)
-#        self.data["loss"].append(loss.item())
-#        if self.i % self.flush_interval == 0:
-#            self.flush()
-#    
-#    def flush(self):
-#        np.savez(self.filename, **self.data)
-
-
 # RMSD between two sets of coordinates with shape (n_atoms, 3) using the Kabsch algorithm
 # Returns the RMSD and whether convergence was reached
 def rmsd(c1, c2):
@@ -116,4 +77,3 @@ def rmsd(c1, c2):
     msd = (diffs ** 2).sum() / diffs.size(1)
     
     return msd.sqrt(), True
-

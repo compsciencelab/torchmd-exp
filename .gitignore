@@ -4,3 +4,4 @@ rmsd.py
 .ipynb_checkpoints
 tests
 __pycache__
+dynamics.py

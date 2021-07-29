@@ -1,6 +1,7 @@
 import torch
 from torchmd.systems import System
 from torchmd.forcefields.forcefield import ForceField
+from torchmd.forcefields.ff_yaml import YamlForcefield
 from torchmd.parameters import Parameters
 from torchmd.forces import Forces
 from torchmd.integrator import maxwell_boltzmann
@@ -15,13 +16,16 @@ import shutil
 from tqdm import tqdm
 from train import train
 from propagator import Propagator, rmsd
+from utils import ProteinDataset
+from trainff import TrainForceField
+from systembox import SystemBox
+from dynamics import dynamics
 
-FS2NS=1E-6
 
 def get_args(arguments=None):
     parser = argparse.ArgumentParser(description='TorchMD-AD', prefix_chars='--')
-    parser.add_argument('--structure', default=None, help='Input PDB')
-    parser.add_argument('--topology', default=None, help='Input PSF')
+    parser.add_argument('--data_dir', default=None, help='Input directory')
+    #parser.add_argument('--topology', default=None, help='Input PSF')
     parser.add_argument('--cg', default=True, help='Define a Coarse-grained system')
     parser.add_argument('--timestep', default=1, type=float, help='Timestep in fs')
     parser.add_argument('--temperature',  default=300,type=float, help='Assign velocity from initial temperature in K')
@@ -41,8 +45,9 @@ def get_args(arguments=None):
     parser.add_argument('--log-dir', default='./', help='Log directory')
     parser.add_argument('--minimize', default=None, type=int, help='Minimize the system for `minimize` steps')
     parser.add_argument('--steps',type=int,default=1000,help='Total number of simulation steps')
-    parser.add_argument('--output-period',type=int,default=100,help='Store trajectory and print monitor.csv every period')
+    parser.add_argument('--output_period',type=int,default=100,help='Store trajectory and print monitor.csv every period')
     parser.add_argument('--save-period',type=int,default=10,help='Dump trajectory to npy file. By default 10 times output-period.')
+    parser.add_argument('--n_epochs',type=int,default=10,help='Number of epochs.')
 
     args = parser.parse_args(args=arguments)
 
@@ -50,105 +55,122 @@ def get_args(arguments=None):
 
 precisionmap = {'single': torch.float, 'double': torch.double}
 
-def setup(args):
+def setup_system(args, mol):
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     device = torch.device(args.device)
-
-    
-    if args.structure is not None:
-        mol = Molecule(args.structure)
-        if args.cg:
-            # Get the structure with only CAs
-            cwd = os.getcwd()
-            tmp_dir = cwd + '/tmpcg/'
-            os.mkdir(tmp_dir) # tmp directory to save full pdbs
-            mol = mol.copy()
-            mol.write(tmp_dir + 'molcg.pdb', 'name CA')
-            mol = Molecule(tmp_dir + 'molcg.pdb')
-            shutil.rmtree(tmp_dir)
-            
-            # Read the topology to the molecule
-            mol.read(args.topology)
             
     precision = precisionmap[args.precision]
-    
-    ff = ForceField.create(mol, args.forcefield)
-    
+        
     terms = ["bonds"]
     
-    parameters = Parameters(ff, mol, terms, precision=precision, device=device)
+    systembox = SystemBox(mol, args.forcefield, terms)
 
-    
-    system = System(mol.numAtoms, args.replicas, precision, device)
-    system.set_positions(mol.coords)
-    #system.set_box(mol.box)
-    system.set_velocities(maxwell_boltzmann(parameters.masses, args.temperature, args.replicas))
-    
-    
-    forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, rfa=args.rfa, switch_dist=args.switch_dist)
-    
-    return mol, system, forces
+    return systembox
 
-def dynamics(args, mol, system, forces):
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    device = torch.device(args.device)
-
-    integrator = Integrator(system, forces, args.timestep, device, gamma=args.langevin_gamma, T=args.langevin_temperature)
-    wrapper = Wrapper(mol.numAtoms, mol.bonds if len(mol.bonds) else None, device)
-    
-    outputname, outputext = os.path.splitext(args.output)
-    trajs = []
-    logs = []
-    for k in range(args.replicas):
-        logs.append(LogWriter(args.log_dir,keys=('iter','ns','epot','ekin','etot','T'), name=f'monitor_{k}.csv'))
-        trajs.append([])
-
-    if args.minimize != None:
-        minimize_bfgs(system, forces, steps=args.minimize)
-
-    iterator = tqdm(range(1,int(args.steps/args.output_period)+1))
-    Epot = forces.compute(system.pos, system.box, system.forces)
-
-    for i in iterator:
-        # viewFrame(mol, system.pos, system.forces)
-        Ekin, Epot, T = integrator.step(niter=args.output_period)
-        wrapper.wrap(system.pos, system.box)
-        currpos = system.pos.detach().cpu().numpy().copy()
-                
-        for k in range(args.replicas):
-            trajs[k].append(currpos[k])
-            if (i*args.output_period) % args.save_period  == 0:
-                np.save(os.path.join(args.log_dir, f"{outputname}_{k}{outputext}"), np.stack(trajs[k], axis=2)) #ideally we want to append
-            
-            logs[k].write_row({'iter':i*args.output_period,'ns':FS2NS*i*args.output_period*args.timestep,'epot':Epot[k],
-                                'ekin':Ekin[k],'etot':Epot[k]+Ekin[k],'T':T[k]})
-
-    return currpos
 
 if __name__ == "__main__":
     args = get_args()
-    mol, system, forces = setup(args)
+            
+    # Get the directory with the names of all the proteins
+    cgdms_dir = os.path.dirname(os.path.realpath(__file__))
+    dataset_dir = os.path.join(cgdms_dir, "datasets")
     
-    bond_params = forces.par.bond_params*0.01
+    # Directory where the pdb and psf data is saved
+    train_val_dir = args.data_dir
+
+    # Lists with the names of the train and validation proteins
+    train_proteins = [l.rstrip() for l in open(os.path.join(dataset_dir, "train.txt"))]
+    val_proteins   = [l.rstrip() for l in open(os.path.join(dataset_dir, "val.txt"  ))]
     
-    #native_coords = system.pos
-    #final_coords = dynamics(args, mol, system, forces)
+    # Structure and topology directories
+    pdbs_dir = os.path.join(train_val_dir, 'pdb')
+    psf_dir = os.path.join(train_val_dir, 'psf')
+
+    # Loading the training and validation molecules
+    train_set = ProteinDataset(train_proteins, pdbs_dir, psf_dir)
+    val_set = ProteinDataset(val_proteins, pdbs_dir, psf_dir)
+
+    # Initialize the system
+    systembox = setup_system(args, train_set[0])
     
-    propagator = Propagator(system, forces, bond_params)
+    # Initialize propagator 
+    propagator = Propagator(systembox)
     optim = torch.optim.Adam([propagator.bond_params], lr=1e-3)
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2, gamma=0.1)
+
+    # Native coords
+    native_coords = systembox.system.pos.clone()
     
-    new_pos, new_vel = propagator(system.pos, system.vel, niter=100)
+    # Start training
+    n_epochs = 4
+    max_n_steps = 2_000
+    learning_rate = 1e-4
+    n_accumulate = 100
+
+    train_rmsds = []
+
+    for epoch in range(n_epochs):
+        print(f"Epoch {epoch}/{n_epochs}")
     
-    print(rmsd(new_pos, new_pos))
+        optim.zero_grad()
+        new_coords, new_vel = propagator(systembox.system.pos, systembox.system.vel, niter=100)
+        loss, passed = rmsd(new_coords, native_coords)
+        train_rmsds.append(loss)
     
-    print(new_pos[0])
-    print(system.pos[0])
-    #precision = precisionmap[args.precision]
-    #ff = ForceField.create(mol, None)
-    #parameters = Parameters(ff, mol, precision=precision)
+        if passed:
+            loss_log = torch.log(1.0 + loss)
+            loss_log.backward()    
     
-# train: --structure /workspace7/torchmd-AD/train_val_torchmd/pdb/1WQJ_I.pdb
-# topo: --topology /workspace7/torchmd-AD/train_val_torchmd/psf/1WQJ_I.psf
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    # Define the system parameters
+    #forces = torch.tensor()
+    #mol = train_set[0]
+    #mol, system, forces = setup_system(args, mol)
+    
+    #print(forces.par.bonds)
+    
+    #forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, rfa=args.rfa, switch_dist=args.switch_dist)
+
+    
+    #propagator = Propagator(forces=forces)
+    #optim = torch.optim.Adam([propagator.bond_params], lr=1e-3)
+    #scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2, gamma=0.1)
+    
+    #bond_params = forces.par.bond_params*0.01
+    
+    #native_coords = system.pos.clone()
+        
+    #propagator = Propagator(system, forces, bond_params)
+    #optim = torch.optim.Adam([propagator.bond_params], lr=1e-3)
+    #scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2, gamma=0.1)
+        
+    
+
+# data_dir: --data_dir  /workspace7/torchmd-AD/train_val_torchmd
+
+
+#mol = train_set[2]
+#precision = precisionmap[args.precision]
+
+#parameters = Parameters(ff, mol, terms, precision=precision, device=args.device)
+
+#forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, rfa=args.rfa, switch_dist=args.switch_dist)
