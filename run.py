@@ -120,57 +120,6 @@ if __name__ == "__main__":
     
         if passed:
             loss_log = torch.log(1.0 + loss)
-            loss_log.backward()    
+            loss_log.backward()           
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    # Define the system parameters
-    #forces = torch.tensor()
-    #mol = train_set[0]
-    #mol, system, forces = setup_system(args, mol)
-    
-    #print(forces.par.bonds)
-    
-    #forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, rfa=args.rfa, switch_dist=args.switch_dist)
-
-    
-    #propagator = Propagator(forces=forces)
-    #optim = torch.optim.Adam([propagator.bond_params], lr=1e-3)
-    #scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2, gamma=0.1)
-    
-    #bond_params = forces.par.bond_params*0.01
-    
-    #native_coords = system.pos.clone()
-        
-    #propagator = Propagator(system, forces, bond_params)
-    #optim = torch.optim.Adam([propagator.bond_params], lr=1e-3)
-    #scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2, gamma=0.1)
-        
-    
-
 # data_dir: --data_dir  /workspace7/torchmd-AD/train_val_torchmd
-
-
-#mol = train_set[2]
-#precision = precisionmap[args.precision]
-
-#parameters = Parameters(ff, mol, terms, precision=precision, device=args.device)
-
-#forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, rfa=args.rfa, switch_dist=args.switch_dist)
