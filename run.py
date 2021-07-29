@@ -25,12 +25,13 @@ from dynamics import dynamics
 def get_args(arguments=None):
     parser = argparse.ArgumentParser(description='TorchMD-AD', prefix_chars='--')
     parser.add_argument('--data_dir', default=None, help='Input directory')
+    parser.add_argument('--system', default=None, help='System object to use')
     #parser.add_argument('--topology', default=None, help='Input PSF')
     parser.add_argument('--cg', default=True, help='Define a Coarse-grained system')
     parser.add_argument('--timestep', default=1, type=float, help='Timestep in fs')
     parser.add_argument('--temperature',  default=300,type=float, help='Assign velocity from initial temperature in K')
-    parser.add_argument('--langevin-gamma',  default=0.1,type=float, help='Langevin relaxation ps^-1')
-    parser.add_argument('--langevin-temperature',  default=0,type=float, help='Temperature in K of the thermostat')
+    parser.add_argument('--langevin_gamma',  default=0.1,type=float, help='Langevin relaxation ps^-1')
+    parser.add_argument('--langevin_temperature',  default=0,type=float, help='Temperature in K of the thermostat')
     parser.add_argument('--seed',type=int,default=1,help='random seed (default: 1)')
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
     parser.add_argument('--precision', default='single', type=str, help='LJ/Elec/Bond cutoff')
@@ -55,18 +56,31 @@ def get_args(arguments=None):
 
 precisionmap = {'single': torch.float, 'double': torch.double}
 
-def setup_system(args, mol):
+def setup_system(args, mol, systembox=None):
+    
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     device = torch.device(args.device)
             
     precision = precisionmap[args.precision]
-        
+    
     terms = ["bonds"]
     
-    systembox = SystemBox(mol, args.forcefield, terms)
+    if systembox == "box":
+        systembox = SystemBox(mol, args.forcefield, terms)
+        return systembox
+    else:
+        ff = ForceField.create(mol, args.forcefield)
+        
+        parameters = Parameters(ff, mol, terms)
+        forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, 
+                        rfa=args.rfa, switch_dist=args.switch_dist
+                       )
+        system = System(mol.numAtoms, nreplicas=args.replicas,precision=precisionmap[args.precision], device=args.device)
+        system.set_positions(mol.coords)
+        system.set_velocities(maxwell_boltzmann(forces.par.masses, T=args.temperature, replicas=args.replicas))
 
-    return systembox
+        return system, forces
 
 
 if __name__ == "__main__":
@@ -88,38 +102,56 @@ if __name__ == "__main__":
     psf_dir = os.path.join(train_val_dir, 'psf')
 
     # Loading the training and validation molecules
-    train_set = ProteinDataset(train_proteins, pdbs_dir, psf_dir)
-    val_set = ProteinDataset(val_proteins, pdbs_dir, psf_dir)
-
-    # Initialize the system
-    systembox = setup_system(args, train_set[0])
+    train_set = ProteinDataset(train_proteins, pdbs_dir, psf_dir, device=torch.device(args.device))
+    val_set = ProteinDataset(val_proteins, pdbs_dir, psf_dir, device=torch.device(args.device))
     
-    # Initialize propagator 
-    propagator = Propagator(systembox)
-    optim = torch.optim.Adam([propagator.bond_params], lr=1e-3)
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2, gamma=0.1)
-
-    # Native coords
-    native_coords = systembox.system.pos.clone()
-    
-    # Start training
-    n_epochs = 4
-    max_n_steps = 2_000
-    learning_rate = 1e-4
-    n_accumulate = 100
-
-    train_rmsds = []
-
-    for epoch in range(n_epochs):
-        print(f"Epoch {epoch}/{n_epochs}")
-    
-        optim.zero_grad()
-        new_coords, new_vel = propagator(systembox.system.pos, systembox.system.vel, niter=100)
-        loss, passed = rmsd(new_coords, native_coords)
-        train_rmsds.append(loss)
-    
-        if passed:
-            loss_log = torch.log(1.0 + loss)
-            loss_log.backward()           
+    # Initialize system
+    if not args.system:
+        system, forces = setup_system(args, train_set[0], args.system)
+        
+        # Define native coordinates
+        native_coords = system.pos.clone()
+        
+        # Start inegrator object
+        device = torch.device(args.device)
+        integrator = Integrator(system, forces, timestep=args.timestep, device=device, 
+                                gamma=args.langevin_gamma, T=args.langevin_temperature
+                               )
+        
+        ############## START TRAINING ###############
+        
+        n_epochs = 50
+        n_steps = 2000
+        learning_rate = 1e-4
+        n_accumulate = 100
+        
+        forces.par.bond_params *= 0.9
+        optim = torch.optim.Adam([forces.par.bond_params], lr=learning_rate)
+        forces.par.bond_params.requires_grad=True
+        
+        
+        for epoch in range(n_epochs):
+            
+            print("EPOCH :", epoch)
+            print("k:", forces.par.bond_params[0][0].item(), "req:", forces.par.bond_params[0][1].item())
+            optim.zero_grad()
+            train_rmsds, val_rmsds = [], []
+            
+            # Simulation
+            for step in range(n_steps):
+                Ekin, pot, T = integrator.step(niter=1)
+                
+            loss, passed = rmsd(native_coords, system.pos)
+            train_rmsds.append(loss.item())
+            if passed:
+                loss_log = torch.log(1.0 + loss)
+                loss_log.backward(retain_graph=True)
+            optim.step()
+            
+            print("RMSD:", loss.item())
+            print("Epot:", pot)
+            
+        #print(optim.state_dict())
+        #print(forces.par.bond_params[0][0])
     
 # data_dir: --data_dir  /workspace7/torchmd-AD/train_val_torchmd

@@ -21,13 +21,7 @@ class Propagator(torch.nn.Module):
         self.systembox = systembox
         self.langevin_gamma = langevin_gamma
         
-        self.bond_params = torch.nn.Parameter(
-            torch.tensor(
-            systembox.forces.par.bond_params,
-            dtype = systembox.dtype,
-            device = systembox.device
-            )
-        )
+        self.bond_params = torch.nn.Parameter(systembox.forces.par.bond_params, requires_grad=True)
 
     def forward(self, pos, vel, niter):
         systembox = copy.deepcopy(self.systembox)
@@ -42,11 +36,7 @@ class Propagator(torch.nn.Module):
         systembox.system.pos[:] = pos
         systembox.system.vel[:] = vel
         integrator.step(niter=niter)
-
-        return systembox.system.pos, systembox.system.vel
-    
-    #def _apply_ff_parameters(self, forces):
-    #    self.bond_params[:] = forces.par.bond_params
+        return systembox.system.pos, systembox.system.vel        
         
 # RMSD between two sets of coordinates with shape (n_atoms, 3) using the Kabsch algorithm
 # Returns the RMSD and whether convergence was reached
