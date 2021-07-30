@@ -61,7 +61,7 @@ def get_bond_params(all_bonds_dict, bonds):
                 
     return mol_bonds_dict
 
-def extract_bond_params(ff, mol):
+def extract_bond_params(ff, mol, device):
     all_bonds_dict = ff.prm['bonds']
     
     bonds = get_mol_bonds(mol)
@@ -71,8 +71,8 @@ def extract_bond_params(ff, mol):
     for key in mol_bonds_dict:
         for key, value in mol_bonds_dict[key].items():
             params.append(list(value.values()))
-
-    return torch.tensor(params)
+    
+    return torch.tensor(params, device=device)
 
 # Functions to insert parameters
 
