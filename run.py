@@ -20,7 +20,9 @@ from utils import ProteinDataset
 from trainff import TrainForceField
 from systembox import SystemBox
 from dynamics import dynamics
+from random import shuffle
 
+from utils import set_ff_bond_parameters, extract_bond_params, insert_bond_params
 
 def get_args(arguments=None):
     parser = argparse.ArgumentParser(description='TorchMD-AD', prefix_chars='--')
@@ -71,7 +73,7 @@ def setup_system(args, mol, systembox=None):
         return systembox
     else:
         ff = ForceField.create(mol, args.forcefield)
-        
+                
         parameters = Parameters(ff, mol, terms)
         forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, 
                         rfa=args.rfa, switch_dist=args.switch_dist
@@ -105,51 +107,80 @@ if __name__ == "__main__":
     train_set = ProteinDataset(train_proteins, pdbs_dir, psf_dir, device=torch.device(args.device))
     val_set = ProteinDataset(val_proteins, pdbs_dir, psf_dir, device=torch.device(args.device))
     
-    # Initialize system
+    
+    
+    ############## START TRAINING ###############
+    
     if not args.system:
-        system, forces = setup_system(args, train_set[0], args.system)
         
-        # Define native coordinates
-        native_coords = system.pos.clone()
+        # Initialize parameters. 
+        # Save in trainff a tensor with all the force field parameters 
+        # that will be used to train the different molecules 
         
-        # Start inegrator object
-        device = torch.device(args.device)
-        integrator = Integrator(system, forces, timestep=args.timestep, device=device, 
-                                gamma=args.langevin_gamma, T=args.langevin_temperature
-                               )
-        
-        ############## START TRAINING ###############
-        
-        n_epochs = 50
+        trainff = TrainForceField.create(mol=None, prm=args.forcefield)
+        trainff = set_ff_bond_parameters(trainff, k0=0.01, req=0.01)
+
+        n_epochs = 1
         n_steps = 2000
         learning_rate = 1e-4
         n_accumulate = 100
-        
-        forces.par.bond_params *= 0.9
-        optim = torch.optim.Adam([forces.par.bond_params], lr=learning_rate)
-        forces.par.bond_params.requires_grad=True
-        
-        
+
         for epoch in range(n_epochs):
+        
+            if epoch == 37:
+                learning_rate = learning_rate / 2
             
-            print("EPOCH :", epoch)
-            print("k:", forces.par.bond_params[0][0].item(), "req:", forces.par.bond_params[0][1].item())
-            optim.zero_grad()
             train_rmsds, val_rmsds = [], []
+            train_inds = list(range(len(train_set)))
+            val_inds = list(range(len(val_set)))
+            shuffle(train_inds)
+            shuffle(val_inds)
             
-            # Simulation
-            for step in range(n_steps):
-                Ekin, pot, T = integrator.step(niter=1)
+            for i, ni in enumerate(train_inds - 1900):
                 
-            loss, passed = rmsd(native_coords, system.pos)
-            train_rmsds.append(loss.item())
-            if passed:
-                loss_log = torch.log(1.0 + loss)
-                loss_log.backward(retain_graph=True)
-            optim.step()
+                # Initialize system
+                system, forces = setup_system(args, train_set[ni], args.system)
+        
+                # Define native coordinates
+                native_coords = system.pos.clone()
+        
+                # Define system bond parameters. Extract from the all_parameters tensor that's in trainff
+        
+                forces.par.bond_params = extract_bond_params(trainff, train_set[ni])
+        
+                # Start inegrator object
+                device = torch.device(args.device)
+                integrator = Integrator(system, forces, timestep=args.timestep, device=device, 
+                                        gamma=args.langevin_gamma, T=args.langevin_temperature
+                                       )
+        
+        
+                # Start optimizer
+                optim = torch.optim.Adam([forces.par.bond_params], lr=learning_rate)
+                forces.par.bond_params.requires_grad=True
+                optim.zero_grad()
+                
+                # Simulation
+                for step in range(n_steps):
+                    Ekin, pot, T = integrator.step(niter=1)
+                
+                # Compute loss
+                loss, passed = rmsd(native_coords, system.pos)
+                train_rmsds.append(loss.item())
+                
+                print(f'Training {i + 1} / {len(train_set)} - RMSD {loss} over {n_steps}')
+                
+                if passed:
+                    loss_log = torch.log(1.0 + loss)
+                    loss_log.backward()
+                optim.step()
+
+                                
+                # Insert the updated bond parameters to the full parameters dictionary
+                trainff.prm["bonds"] = insert_bond_params(train_set[0], forces, trainff.prm["bonds"])
             
-            print("RMSD:", loss.item())
-            print("Epot:", pot)
+            print(f'EPOCH {epoch} / {n_epochs} - RMSD {loss}')
+            
             
         #print(optim.state_dict())
         #print(forces.par.bond_params[0][0])
