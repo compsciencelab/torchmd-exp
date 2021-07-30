@@ -22,6 +22,8 @@ from systembox import SystemBox
 from dynamics import dynamics
 from random import shuffle
 
+from statistics import mean
+import json
 from utils import set_ff_bond_parameters, extract_bond_params, insert_bond_params
 
 def get_args(arguments=None):
@@ -74,16 +76,19 @@ def setup_system(args, mol, systembox=None):
     else:
         ff = ForceField.create(mol, args.forcefield)
                 
-        parameters = Parameters(ff, mol, terms)
+        parameters = Parameters(ff, mol, terms, device=device)
         forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, 
                         rfa=args.rfa, switch_dist=args.switch_dist
                        )
-        system = System(mol.numAtoms, nreplicas=args.replicas,precision=precisionmap[args.precision], device=args.device)
+        system = System(mol.numAtoms, nreplicas=args.replicas,precision=precisionmap[args.precision], device=device)
         system.set_positions(mol.coords)
         system.set_velocities(maxwell_boltzmann(forces.par.masses, T=args.temperature, replicas=args.replicas))
 
-        return system, forces
+        return system, forces, device
 
+ ########### JUST TRYING ##############
+import sys
+import os
 
 if __name__ == "__main__":
     args = get_args()
@@ -120,69 +125,83 @@ if __name__ == "__main__":
         trainff = TrainForceField.create(mol=None, prm=args.forcefield)
         trainff = set_ff_bond_parameters(trainff, k0=0.01, req=0.01)
 
-        n_epochs = 1
-        n_steps = 2000
+        n_epochs = 5
+        max_n_steps = 2000
         learning_rate = 1e-4
         n_accumulate = 100
+        
+        # Write to a file 
+        
+        with open('training/rmsds.txt', 'w') as file_rmsds: #, open('training/ffparameters.txt', 'w') as file_params:
+        
+            for epoch in range(n_epochs):
+        
+                if epoch == 37:
+                    learning_rate = learning_rate / 2
+            
+                train_rmsds, val_rmsds = [], []
+                n_steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up n_steps over epochs
+                train_inds = list(range(len(train_set) - 1910))
+                val_inds = list(range(len(val_set) - 1910))
+                shuffle(train_inds)
+                shuffle(val_inds)
+            
+                for i, ni in enumerate(train_inds):
+                
+                    # Initialize system
+                    system, forces, device = setup_system(args, train_set[ni], args.system)
+                
+                
+                    # Define native coordinates
+                    native_coords = system.pos.clone()
+        
+                    # Define system bond parameters. Extract from the all_parameters tensor that's in trainff
+        
+                    forces.par.bond_params = extract_bond_params(trainff, train_set[ni], device)
 
-        for epoch in range(n_epochs):
+                    # Start inegrator object
+                    integrator = Integrator(system, forces, timestep=args.timestep, device=device, 
+                                           gamma=args.langevin_gamma, T=args.langevin_temperature
+                                          )
         
-            if epoch == 37:
-                learning_rate = learning_rate / 2
-            
-            train_rmsds, val_rmsds = [], []
-            train_inds = list(range(len(train_set)))
-            val_inds = list(range(len(val_set)))
-            shuffle(train_inds)
-            shuffle(val_inds)
-            
-            for i, ni in enumerate(train_inds - 1900):
+        
+                    # Start optimizer
+                    optim = torch.optim.Adam([forces.par.bond_params], lr=learning_rate)
+                    forces.par.bond_params.requires_grad=True
+                    optim.zero_grad()
                 
-                # Initialize system
-                system, forces = setup_system(args, train_set[ni], args.system)
-        
-                # Define native coordinates
-                native_coords = system.pos.clone()
-        
-                # Define system bond parameters. Extract from the all_parameters tensor that's in trainff
-        
-                forces.par.bond_params = extract_bond_params(trainff, train_set[ni])
-        
-                # Start inegrator object
-                device = torch.device(args.device)
-                integrator = Integrator(system, forces, timestep=args.timestep, device=device, 
-                                        gamma=args.langevin_gamma, T=args.langevin_temperature
-                                       )
-        
-        
-                # Start optimizer
-                optim = torch.optim.Adam([forces.par.bond_params], lr=learning_rate)
-                forces.par.bond_params.requires_grad=True
-                optim.zero_grad()
+                    # Simulation
+                    for step in range(n_steps):
+                        Ekin, pot, T = integrator.step(niter=1)
                 
-                # Simulation
-                for step in range(n_steps):
-                    Ekin, pot, T = integrator.step(niter=1)
+                    # Compute loss
+                    loss, passed = rmsd(native_coords, system.pos)
+                    train_rmsds.append(loss.item())
                 
-                # Compute loss
-                loss, passed = rmsd(native_coords, system.pos)
-                train_rmsds.append(loss.item())
+                    print(f'Training {i + 1} / {len(train_set)} - RMSD {loss} over {n_steps} steps')
                 
-                print(f'Training {i + 1} / {len(train_set)} - RMSD {loss} over {n_steps}')
-                
-                if passed:
-                    loss_log = torch.log(1.0 + loss)
-                    loss_log.backward()
-                optim.step()
+                    if passed:
+                        loss_log = torch.log(1.0 + loss)
+                        loss_log.backward()
+                    optim.step()
 
                                 
-                # Insert the updated bond parameters to the full parameters dictionary
-                trainff.prm["bonds"] = insert_bond_params(train_set[0], forces, trainff.prm["bonds"])
-            
-            print(f'EPOCH {epoch} / {n_epochs} - RMSD {loss}')
-            
-            
-        #print(optim.state_dict())
-        #print(forces.par.bond_params[0][0])
+                    # Insert the updated bond parameters to the full parameters dictionary
+                    trainff.prm["bonds"] = insert_bond_params(train_set[ni], forces, trainff.prm["bonds"])
+                
+                # Write
+                file_rmsds.write(f'EPOCH {epoch} \n')
+                file_rmsds.write(str(mean(train_rmsds)))
+                file_params.write(json.dumps(trainff.prm["bonds"], indent=4))
+                
+                print(f'EPOCH {epoch} / {n_epochs} - RMSD {loss}')
+        
+            file_rmsds.close()
+            file_params.close()
+        
+    #with open('training/ffparameters.txt', 'w') as par_object:
+    #    par_object.write(json.dumps(trainff.prm["bonds"], indent=4))
+    #par_object.close()
+        
     
 # data_dir: --data_dir  /workspace7/torchmd-AD/train_val_torchmd
