@@ -125,7 +125,7 @@ if __name__ == "__main__":
         trainff = TrainForceField.create(mol=None, prm=args.forcefield)
         trainff = set_ff_bond_parameters(trainff, k0=0.01, req=0.01)
 
-        n_epochs = 5
+        n_epochs = 50
         max_n_steps = 2000
         learning_rate = 1e-4
         n_accumulate = 100
@@ -140,8 +140,8 @@ if __name__ == "__main__":
             
             train_rmsds, val_rmsds = [], []
             n_steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up n_steps over epochs
-            train_inds = list(range(len(train_set) - 1910))
-            val_inds = list(range(len(val_set) - 1910))
+            train_inds = list(range(len(train_set)))
+            val_inds = list(range(len(val_set)))
             shuffle(train_inds)
             shuffle(val_inds)
             
