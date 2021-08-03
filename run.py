@@ -144,8 +144,8 @@ if __name__ == "__main__":
             
             train_rmsds, val_rmsds = [], []
             n_steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up n_steps over epochs
-            train_inds = list(range(len(train_set) - 1910))
-            val_inds = list(range(len(val_set) - 1910))
+            train_inds = list(range(len(train_set)))
+            val_inds = list(range(len(val_set)))
             shuffle(train_inds)
             shuffle(val_inds)
             
@@ -199,12 +199,5 @@ if __name__ == "__main__":
                
             print(f'EPOCH {epoch} / {n_epochs} - RMSD {mean(train_rmsds)}')
         
-    #file_rmsds.close()
             
-        
-    #with open('training/ffparameters.txt', 'w') as par_object:
-    #    par_object.write(json.dumps(trainff.prm["bonds"], indent=4))
-    #par_object.close()
-        
-    
 # data_dir: --data_dir  /workspace7/torchmd-AD/train_val_torchmd
