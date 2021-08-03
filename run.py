@@ -40,7 +40,7 @@ def get_args(arguments=None):
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
     parser.add_argument('--precision', default='single', type=str, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--replicas', type=int, default=1, help='Number of different replicas to run')
-    parser.add_argument('--forcefield', default="parameters/ca_priors-dihedrals_general.yaml", help='Forcefield .yaml file')
+    parser.add_argument('--forcefield', default="/shared/carles/torchMD-DMS/parameters/ca_priors-dihedrals_general.yaml", help='Forcefield .yaml file')
     parser.add_argument('--forceterms', nargs='+', default="[bonds]", help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--rfa', default=False, action='store_true', help='Enable reaction field approximation')
     parser.add_argument('--switch_dist', default=None, type=float, help='Switching distance for LJ')
@@ -91,7 +91,8 @@ import os
 
 if __name__ == "__main__":
     args = get_args()
-            
+    device = torch.device(args.device)
+    
     # Get the directory with the names of all the proteins
     cgdms_dir = os.path.dirname(os.path.realpath(__file__))
     dataset_dir = os.path.join(cgdms_dir, "datasets")
@@ -112,92 +113,80 @@ if __name__ == "__main__":
     val_set = ProteinDataset(val_proteins, pdbs_dir, psf_dir, device=torch.device(args.device))
     
     
-    
     ############## START TRAINING ###############
+            
+    # Initialize parameters. 
+    # Save in trainff a tensor with all the force field parameters 
+    # that will be used to train the different molecules 
+        
+    trainff = ForceField.create(mol=None, prm=args.forcefield)
+    trainff = set_ff_bond_parameters(trainff, k0=0.01, req=0.01)
+    train_parameters = TrainableParameters(trainff, device=device)
     
-    if not args.system:
         
-        # Initialize parameters. 
-        # Save in trainff a tensor with all the force field parameters 
-        # that will be used to train the different molecules 
-        
-        trainff = ForceField.create(mol=None, prm=args.forcefield)
-        trainff = set_ff_bond_parameters(trainff, k0=0.01, req=0.01)
-        train_parameters = TrainableParameters(trainff)
-        
-        n_epochs = 50
-        max_n_steps = 2000
-        learning_rate = 1e-4
-        n_accumulate = 100
+    n_epochs = 50
+    max_n_steps = 2000
+    learning_rate = 1e-4
+    n_accumulate = 100
         
         
-        # Start optimizer
-        
-        optim = torch.optim.Adam([train_parameters.bond_params], lr=learning_rate)
-        train_parameters.bond_params.requires_grad=True
-                
-        for epoch in range(n_epochs):
-            epoch += 1
+    # Start propagator and optimizer
+    propagator = Propagator(train_parameters = train_parameters, timestep=args.timestep, device=device, 
+                            gamma = args.langevin_gamma, T=args.langevin_temperature
+                            )
+    optim = torch.optim.Adam([propagator.bond_params], lr=learning_rate)
+    
+    for epoch in range(n_epochs):
+        epoch += 1
             
-            if epoch == 37:
-                learning_rate = learning_rate / 2
-            
-            train_rmsds, val_rmsds = [], []
-            n_steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up n_steps over epochs
-            train_inds = list(range(len(train_set)))
-            val_inds = list(range(len(val_set)))
-            shuffle(train_inds)
-            shuffle(val_inds)
-            
-            for i, ni in enumerate(train_inds):
-                
-                # Initialize system
-                system, forces, device = setup_system(args, train_set[ni], args.system)
-                
-                # Define native coordinates
-                native_coords = system.pos.clone()
+        if epoch == 37:
+            learning_rate = learning_rate / 2
         
-                # Define system bond parameters. Extract from the all_parameters tensor that's in trainff
-        
-                forces.par.bond_params = train_parameters.extract_bond_params(trainff, train_set[ni])
+        train_rmsds, val_rmsds = [], []
+        n_steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up n_steps over epochs
+        train_inds = list(range(len(train_set) - 1910))
+        val_inds = list(range(len(val_set) - 1910))
+        shuffle(train_inds)
+        shuffle(val_inds)
+            
+        # Optim zero grad
+        optim.zero_grad()
+
+        for i, ni in enumerate(train_inds):
                 
-                # Start inegrator object
-                integrator = Integrator(system, forces, timestep=args.timestep, device=device, 
-                                        gamma=args.langevin_gamma, T=args.langevin_temperature
-                                        )
-                # Optim zero grad
-                optim.zero_grad()
+
+            # Initialize system
+            system, forces, device = setup_system(args, train_set[ni], args.system)
+            
+            # Forward pass
+            native_coords, last_coords = propagator(system, forces, trainff, train_set[ni], n_steps)
                 
-                # Simulation
-                for step in range(n_steps):
-                    Ekin, pot, T = integrator.step(niter=1)
+            # Compute loss
+            loss, passed = rmsd(native_coords, last_coords)
+            train_rmsds.append(loss.item())
                 
-                # Compute loss
-                loss, passed = rmsd(native_coords, system.pos)
-                train_rmsds.append(loss.item())
+            print(f'Training {i + 1} / {len(train_set)} - RMSD {loss} over {n_steps} steps')
                 
-                print(f'Training {i + 1} / {len(train_set)} - RMSD {loss} over {n_steps} steps')
-                
-                if passed:
-                    loss_log = torch.log(1.0 + loss)
-                    loss_log.backward()
-                optim.step()
+            if passed:
+                loss_log = torch.log(1.0 + loss)
+                loss_log.backward()
+            optim.step()
 
                                 
-                # Insert the updated bond parameters to the full parameters dictionary
-                trainff.prm["bonds"] = insert_bond_params(train_set[ni], forces, trainff.prm["bonds"])
-                
-            # Write
-            with open ('training/rmsds.txt', 'a') as file_rmsds:
-                file_rmsds.write(f'EPOCH {epoch} \n')
-                file_rmsds.write(f'{str(mean(train_rmsds))} \n' )
-            file_rmsds.close()
-            
-            with open('training/ffparameters.txt', 'w') as file_params: 
-                file_params.write(json.dumps(trainff.prm["bonds"], indent=4))
-            file_params.close()
+            # Insert the updated bond parameters to the full parameters dictionary
+            trainff.prm["bonds"] = insert_bond_params(train_set[ni], forces, trainff.prm["bonds"])
                
-            print(f'EPOCH {epoch} / {n_epochs} - RMSD {mean(train_rmsds)}')
+        # Write
+        with open ('training/rmsds.txt', 'a') as file_rmsds:
+            file_rmsds.write(f'EPOCH {epoch} \n')
+            file_rmsds.write(f'{str(mean(train_rmsds))} \n' )
+        file_rmsds.close()
+           
+        with open('training/ffparameters.txt', 'w') as file_params: 
+            file_params.write(json.dumps(trainff.prm["bonds"], indent=4))
+        file_params.close()
+               
+        print(f'EPOCH {epoch} / {n_epochs} - RMSD {mean(train_rmsds)}')
         
             
 # data_dir: --data_dir  /workspace7/torchmd-AD/train_val_torchmd

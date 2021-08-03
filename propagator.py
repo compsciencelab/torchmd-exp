@@ -9,34 +9,58 @@ import copy
 class Propagator(torch.nn.Module):
     def __init__(
         self,
-        systembox,
-        timestep=1.0,
-        langevin_gamma=0.,
-        temperature = None,
-    ):  
-        super(Propagator, self).__init__()
-        self.temperature = temperature
-        self.device = systembox.device
+        train_parameters,
+        timestep,
+        device,
+        gamma,
+        T
+    ): 
+        super(Propagator, self).__init__() 
+        self.train_parameters = train_parameters
         self.timestep = timestep
-        self.systembox = systembox
-        self.langevin_gamma = langevin_gamma
+        self.device = device
+        self.gamma = gamma
+        self.T = T
         
-        self.bond_params = torch.nn.Parameter(systembox.forces.par.bond_params, requires_grad=True)
-
-    def forward(self, pos, vel, niter):
-        systembox = copy.deepcopy(self.systembox)
+        self.bond_params = torch.nn.Parameter(train_parameters.bond_params)
+        
+        
+    def forward(self, system, forces, trainff, mol, n_steps):
+        
+        # Define native coordinates
+        native_coords = system.pos.clone()
+        
+        # Define system bond parameters. Extract from the all_parameters tensor that's in trainff
+        forces.par.bond_params = self.extract_bond_params(self.bond_params, trainff, mol)
+        
         integrator = Integrator(
-            systembox.system, 
-            systembox.forces, 
+            system, 
+            forces, 
             timestep = self.timestep, 
-            device = systembox.device, 
-            gamma = self.langevin_gamma, 
-            T=self.temperature
+            device = self.device, 
+            gamma = self.gamma, 
+            T=self.T
         )
-        systembox.system.pos[:] = pos
-        systembox.system.vel[:] = vel
-        integrator.step(niter=niter)
-        return systembox.system.pos, systembox.system.vel        
+        
+        Ekin, pot, T = integrator.step(niter=n_steps)
+            
+        return native_coords, system.pos.clone()
+    
+    def extract_bond_params(self, bond_params, ff, mol):
+        all_bonds_dict = ff.prm['bonds']
+    
+        bonds = self.get_mol_bonds(mol)
+        all_bonds_list = list(all_bonds_dict)
+        bonds_indexes = [all_bonds_list.index(bond) for bond in bonds]
+    
+        return torch.index_select(bond_params, 0, torch.tensor(bonds_indexes, device=self.device))
+    
+    def get_mol_bonds(self, mol):
+        bonds = []
+        for index in range(len(mol.atomtype) - 1):
+            bond = f'({mol.atomtype[index]}, {mol.atomtype[index+1]})'
+            bonds.append(bond)
+        return bonds    
         
 # RMSD between two sets of coordinates with shape (n_atoms, 3) using the Kabsch algorithm
 # Returns the RMSD and whether convergence was reached
