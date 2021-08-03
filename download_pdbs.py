@@ -1,4 +1,3 @@
-import rmsd
 import os
 import sys 
 import urllib
@@ -13,7 +12,9 @@ def get_args(arguments=None):
     parser.add_argument('--pdbs', default=None, help='Download PDBs')
     parser.add_argument('--psfs', default=None, help='PDBs to PSFs')
     parser.add_argument('--atomsel', default='CA', help='Selects only atoms from structure')
-    
+    parser.add_argument('--train', default=None, help='Downloads train proteins')
+    parser.add_argument('--val', default=None, help='Downloads val proteins')
+
     args = parser.parse_args(args=arguments)
 
     return args
@@ -124,16 +125,24 @@ if __name__ == "__main__":
         if not os.path.isdir(tmp_dir):
             os.mkdir(tmp_dir) # tmp directory to save full pdbs
         
-        for file in train_proteins:
-            download_pdb(file, os.path.join(pdbs_dir, 'downloads'))
-        for file in val_proteins:
-            download_pdb(file, os.path.join(pdbs_dir, 'downloads'))
+
+        if args.train:
+            for file in train_proteins:
+                download_pdb(file, os.path.join(pdbs_dir, 'downloads'))
+                
+            # Dictionary with proteins and their chains
+            pdb_chains_train = pdb_chain_to_dict(train_proteins)    
+
+            # Extract desired chains from downloaded proteins
+            extract_chains(pdb_chains_train, args.atomsel ,os.path.join(pdbs_dir, 'downloads/'), pdbs_dir + '/')
             
-        # Dictionary with proteins and their chains
-        pdb_chains = pdb_chain_to_dict(train_proteins)    
-    
-        # Extract desired chains from downloaded proteins
-        extract_chains(pdb_chains, args.atomsel ,os.path.join(pdbs_dir, 'downloads/'), pdbs_dir + '/')
+        elif args.val:
+            for file in val_proteins:
+                download_pdb(file, os.path.join(pdbs_dir, 'downloads'))
+            
+            pdb_chains_val = pdb_chain_to_dict(val_proteins)    
+
+            extract_chains(pdb_chains_val, args.atomsel ,os.path.join(pdbs_dir, 'downloads/'), pdbs_dir + '/')
         
         shutil.rmtree(tmp_dir) # rm tmp directory
     

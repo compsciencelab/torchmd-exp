@@ -18,7 +18,6 @@ from train import train
 from propagator import Propagator, rmsd
 from trainparameters import TrainableParameters
 from utils import ProteinDataset
-from systembox import SystemBox
 from dynamics import dynamics
 from random import shuffle
 
@@ -137,24 +136,22 @@ if __name__ == "__main__":
     optim = torch.optim.Adam([propagator.bond_params], lr=learning_rate)
     
     for epoch in range(n_epochs):
-        epoch += 1
             
         if epoch == 37:
             learning_rate = learning_rate / 2
         
         train_rmsds, val_rmsds = [], []
         n_steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up n_steps over epochs
-        train_inds = list(range(len(train_set) - 1910))
-        val_inds = list(range(len(val_set) - 1910))
+        train_inds = list(range(len(train_set)))
+        val_inds = list(range(len(val_set)))
         shuffle(train_inds)
         shuffle(val_inds)
             
-        # Optim zero grad
-        optim.zero_grad()
-
+        epoch += 1
+        propagator.train()
+        
         for i, ni in enumerate(train_inds):
-                
-
+            
             # Initialize system
             system, forces, device = setup_system(args, train_set[ni], args.system)
             
@@ -170,18 +167,34 @@ if __name__ == "__main__":
             if passed:
                 loss_log = torch.log(1.0 + loss)
                 loss_log.backward()
-            optim.step()
-
-                                
-            # Insert the updated bond parameters to the full parameters dictionary
-            trainff.prm["bonds"] = insert_bond_params(train_set[ni], forces, trainff.prm["bonds"])
-               
+            if (i + 1) % n_accumulate == 0:     
+                optim.step()
+                optim.zero_grad()                      
+                # Insert the updated bond parameters to the full parameters dictionary
+                trainff.prm["bonds"] = insert_bond_params(train_set[ni], forces, trainff.prm["bonds"])
+        
+        propagator.eval()
+        with torch.no_grad():
+            for i, ni in enumerate(val_inds):
+                # Initialize system
+                system, forces, device = setup_system(args, val_set[ni], args.system)
+                # Forward pass
+                native_coords, last_coords = propagator(system, forces, trainff, val_set[ni], n_steps)
+                loss, passed = rmsd(native_coords, last_coords)
+                val_rmsds.append(loss.item())
+                print(f'Validation {i + 1} / {len(val_set)} - RMSD {loss} over {n_steps} steps')
+            
         # Write
         with open ('training/rmsds.txt', 'a') as file_rmsds:
             file_rmsds.write(f'EPOCH {epoch} \n')
             file_rmsds.write(f'{str(mean(train_rmsds))} \n' )
         file_rmsds.close()
-           
+        
+        with open ('training/val_rmsds.txt', 'a') as file_val_rmsds:
+            file_val_rmsds.write(f'EPOCH {epoch} \n')
+            file_val_rmsds.write(f'{str(mean(val_rmsds))} \n' )
+        file_val_rmsds.close()
+        
         with open('training/ffparameters.txt', 'w') as file_params: 
             file_params.write(json.dumps(trainff.prm["bonds"], indent=4))
         file_params.close()
