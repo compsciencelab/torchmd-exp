@@ -16,15 +16,15 @@ import shutil
 from tqdm import tqdm
 from train import train
 from propagator import Propagator, rmsd
+from trainparameters import TrainableParameters
 from utils import ProteinDataset
-from trainff import TrainForceField
 from systembox import SystemBox
 from dynamics import dynamics
 from random import shuffle
 
 from statistics import mean
 import json
-from utils import set_ff_bond_parameters, extract_bond_params, insert_bond_params
+from utils import set_ff_bond_parameters, insert_bond_params
 
 def get_args(arguments=None):
     parser = argparse.ArgumentParser(description='TorchMD-AD', prefix_chars='--')
@@ -86,7 +86,6 @@ def setup_system(args, mol, systembox=None):
 
         return system, forces, device
 
- ########### JUST TRYING ##############
 import sys
 import os
 
@@ -122,16 +121,21 @@ if __name__ == "__main__":
         # Save in trainff a tensor with all the force field parameters 
         # that will be used to train the different molecules 
         
-        trainff = TrainForceField.create(mol=None, prm=args.forcefield)
+        trainff = ForceField.create(mol=None, prm=args.forcefield)
         trainff = set_ff_bond_parameters(trainff, k0=0.01, req=0.01)
-
+        train_parameters = TrainableParameters(trainff)
+        
         n_epochs = 50
         max_n_steps = 2000
         learning_rate = 1e-4
         n_accumulate = 100
         
-        # Write to a file 
-            
+        
+        # Start optimizer
+        
+        optim = torch.optim.Adam([train_parameters.bond_params], lr=learning_rate)
+        train_parameters.bond_params.requires_grad=True
+                
         for epoch in range(n_epochs):
             epoch += 1
             
@@ -140,8 +144,8 @@ if __name__ == "__main__":
             
             train_rmsds, val_rmsds = [], []
             n_steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up n_steps over epochs
-            train_inds = list(range(len(train_set)))
-            val_inds = list(range(len(val_set)))
+            train_inds = list(range(len(train_set) - 1910))
+            val_inds = list(range(len(val_set) - 1910))
             shuffle(train_inds)
             shuffle(val_inds)
             
@@ -150,23 +154,18 @@ if __name__ == "__main__":
                 # Initialize system
                 system, forces, device = setup_system(args, train_set[ni], args.system)
                 
-                
                 # Define native coordinates
                 native_coords = system.pos.clone()
         
                 # Define system bond parameters. Extract from the all_parameters tensor that's in trainff
         
-                forces.par.bond_params = extract_bond_params(trainff, train_set[ni], device)
-
+                forces.par.bond_params = train_parameters.extract_bond_params(trainff, train_set[ni])
+                
                 # Start inegrator object
                 integrator = Integrator(system, forces, timestep=args.timestep, device=device, 
                                         gamma=args.langevin_gamma, T=args.langevin_temperature
                                         )
-        
-        
-                # Start optimizer
-                optim = torch.optim.Adam([forces.par.bond_params], lr=learning_rate)
-                forces.par.bond_params.requires_grad=True
+                # Optim zero grad
                 optim.zero_grad()
                 
                 # Simulation
@@ -198,7 +197,7 @@ if __name__ == "__main__":
                 file_params.write(json.dumps(trainff.prm["bonds"], indent=4))
             file_params.close()
                
-            print(f'EPOCH {epoch} / {n_epochs} - RMSD {loss}')
+            print(f'EPOCH {epoch} / {n_epochs} - RMSD {mean(train_rmsds)}')
         
     #file_rmsds.close()
             

@@ -58,6 +58,7 @@ class TrainableParameters:
             termparams["idx"] = termparams["idx"].to(device)
             termparams["params"] = termparams["params"].to(device)
         self.device = device
+        
     def precision_(self, precision):
         self.A = self.A.type(precision)
         self.B = self.B.type(precision)
@@ -136,7 +137,24 @@ class TrainableParameters:
     
     def make_bonds(self, ff, uqbondatomtypes):
         return torch.tensor([ff.get_bond(*at) for at in uqbondatomtypes])
-
+    
+    def extract_bond_params(self, ff, mol):
+        all_bonds_dict = ff.prm['bonds']
+    
+        bonds = self.get_mol_bonds(mol)
+        all_bonds_list = list(all_bonds_dict)
+        bonds_indexes = [all_bonds_list.index(bond) for bond in bonds]
+    
+        return torch.index_select(self.bond_params, 0, torch.tensor(bonds_indexes))
+    
+    def get_mol_bonds(self, mol):
+        bonds = []
+        for index in range(len(mol.atomtype) - 1):
+            bond = f'({mol.atomtype[index]}, {mol.atomtype[index+1]})'
+            bonds.append(bond)
+        return bonds
+    
+    
 def calculate_AB(sigma, epsilon):
     # Lorentz - Berthelot combination rule
     sigma_table = 0.5 * (sigma + sigma[:, None])

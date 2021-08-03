@@ -40,7 +40,7 @@ class ProteinDataset(Dataset):
         return mol
 
 
-### Functions to extract parameters
+# Functions to insert parameters
 
 def get_mol_bonds(mol):
     bonds = []
@@ -48,33 +48,6 @@ def get_mol_bonds(mol):
         bond = f'({mol.atomtype[index]}, {mol.atomtype[index+1]})'
         bonds.append(bond)
     return bonds
-
-def get_bond_params(all_bonds_dict, bonds):
-    mol_bonds_dict = {}
-    i = 0
-    for bond in bonds:
-        for key in all_bonds_dict:
-            if bond == key:
-                i += 1
-                mol_bonds_dict[i] = {}
-                mol_bonds_dict[i][key] = all_bonds_dict[key]
-                
-    return mol_bonds_dict
-
-def extract_bond_params(ff, mol, device):
-    all_bonds_dict = ff.prm['bonds']
-    
-    bonds = get_mol_bonds(mol)
-    mol_bonds_dict = get_bond_params(all_bonds_dict, bonds)
-    
-    params = []
-    for key in mol_bonds_dict:
-        for key, value in mol_bonds_dict[key].items():
-            params.append(list(value.values()))
-    
-    return torch.tensor(params, device=device)
-
-# Functions to insert parameters
 
 def create_bonds_dict(mol, forces):
     bond_names = get_mol_bonds(mol)
