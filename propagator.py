@@ -5,6 +5,7 @@ import argparse
 from moleculekit.molecule import Molecule
 import numpy as np
 import copy
+import os
 
 class Propagator(torch.nn.Module):
     def __init__(
@@ -23,9 +24,14 @@ class Propagator(torch.nn.Module):
         self.T = T
         
         self.bond_params = torch.nn.Parameter(train_parameters.bond_params)
+        #self.sigma = torch.nn.Parameter(train_parameters.sigma)
+        #self.epsilon = torch.nn.Parameter(train_parameters.epsilon)
         
+    def forward(self, system, forces, trainff, mol, n_steps, curr_epoch=0, save_traj=False, traj_dir=""):
         
-    def forward(self, system, forces, trainff, mol, n_steps):
+        # Define trejectory outputs
+        trajectoryout = os.path.join(traj_dir, "xyz" + str(curr_epoch) + ".npy")
+        traj = []
         
         # Define native coordinates
         native_coords = system.pos.clone()
@@ -42,8 +48,15 @@ class Propagator(torch.nn.Module):
             T=self.T
         )
         
-        Ekin, pot, T = integrator.step(niter=n_steps)
+        for i in range(n_steps):
+            Ekin, pot, T = integrator.step(niter=1)
             
+            # Save trajectory if needed
+            if save_traj:
+                currpos = system.pos.detach().cpu().numpy().copy()
+                traj.append(currpos[0])
+                np.save(trajectoryout, np.stack(traj, axis=2))
+                
         return native_coords, system.pos.clone()
     
     def extract_bond_params(self, bond_params, ff, mol):
@@ -61,6 +74,11 @@ class Propagator(torch.nn.Module):
             bond = f'({mol.atomtype[index]}, {mol.atomtype[index+1]})'
             bonds.append(bond)
         return bonds    
+        
+        
+        
+        
+        
         
 # RMSD between two sets of coordinates with shape (n_atoms, 3) using the Kabsch algorithm
 # Returns the RMSD and whether convergence was reached
