@@ -3,6 +3,7 @@ import os
 from moleculekit.molecule import Molecule
 import shutil
 import torch
+import numpy as np
 
 # Read a dataset of input files
 class ProteinDataset(Dataset):
@@ -79,8 +80,9 @@ def set_ff_bond_parameters(ff, k0, req ,todo = "mult"):
         if todo == "mult":
             ff.prm["bonds"][key]['k0'] *= k0
             ff.prm["bonds"][key]['req'] *= req
-        elif todo == "set":
-            ff.prm["bonds"][key]['k0'] = k0
-            ff.prm["bonds"][key]['req'] = req
+        elif todo == "uniform":
+            # Add a term to each parameter sampled from a uniform distribution(-multfactor*term, multfactor*term)
+            ff.prm["bonds"][key]['k0'] += np.random.uniform(-k0*ff.prm["bonds"][key]['k0'], k0*ff.prm["bonds"][key]['k0'])
+            ff.prm["bonds"][key]['req'] += np.random.uniform(-req*ff.prm["bonds"][key]['req'], req*ff.prm["bonds"][key]['req'])
     
     return ff
