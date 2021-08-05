@@ -7,3 +7,4 @@ rmsd.py
 tests
 __pycache__
 dynamics.py
+nohup.out

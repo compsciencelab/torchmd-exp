@@ -1,0 +1,6 @@
+data_dir: /workspace7/torchmd-AD/train_val_torchmd
+prot_save: 3SWY_A
+train_dir: training/train_5_08_bonds
+device: cuda:1
+metro: 17
+par_mod: uniform
