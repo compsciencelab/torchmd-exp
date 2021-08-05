@@ -9,6 +9,8 @@ class TrainableParameters:
     ):
         self.A = None
         self.B = None
+        self.sigma = None
+        self.epsilon = None
         self.all_bonds = None
         self.bonds = None
         self.bond_params = None
@@ -104,7 +106,7 @@ class TrainableParameters:
         self.mapped_atom_types = torch.tensor(indexes)
         self.charges = self.make_charges(ff, ff.get_atom_types())
         self.masses = self.make_masses(ff, ff.get_atom_types())
-        self.A, self.B = self.make_lj(ff, uqatomtypes)
+        self.A, self.B, self.sigma, self.epsilon  = self.make_lj(ff, uqatomtypes)
         
         if "bonds" in terms and len(ff.prm['bonds']):
             uqbonds = np.array(list(product(range(0,20), range(0,20))))
@@ -127,13 +129,14 @@ class TrainableParameters:
             sigma.append(ss)
             epsilon.append(ee)
 
-        sigma = np.array(sigma, dtype=np.float64)
-        epsilon = np.array(epsilon, dtype=np.float64)
+        sigma = torch.tensor(sigma, dtype=torch.float)
+        epsilon = torch.tensor(epsilon, dtype=torch.float)
 
         A, B = calculate_AB(sigma, epsilon)
-        A = torch.tensor(A)
-        B = torch.tensor(B)
-        return A, B
+        #A = torch.tensor(A)
+        #B = torch.tensor(B)
+        
+        return A, B, sigma, epsilon
     
     def make_bonds(self, ff, uqbondatomtypes):
         return torch.tensor([ff.get_bond(*at) for at in uqbondatomtypes])
