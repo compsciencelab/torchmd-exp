@@ -56,7 +56,7 @@ class PrepareTraining:
         native_bond_params = native_params.bond_params.detach().cpu().numpy().copy()
         
         # Modify the priors
-        trainff = set_ff_bond_parameters(trainff, k0=0.4, req=0.4, todo=self.par_mod)
+        trainff = set_ff_bond_parameters(trainff, k0=0.01, req=0.01, todo=self.par_mod)
         self.train_parameters = TrainableParameters(trainff, device=self.device)
     
         return native_bond_params, self.train_parameters, trainff
@@ -141,7 +141,7 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
                 # Molecule
                 mol = val_set[ni]
                 # Initialize system
-                system, forces, device = setup_system(args, mol, args.system)
+                system, forces, device = setup_system(args, mol)
                 # Forward pass
                 native_coords, last_coords = propagator(system, forces, trainff, mol, n_steps)
                 loss, passed = rmsd(native_coords, last_coords)

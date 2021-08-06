@@ -61,30 +61,6 @@ def get_args(arguments=None):
 
     return args
 
-precisionmap = {'single': torch.float, 'double': torch.double}
-
-def setup_system(args, mol, systembox=None):
-    
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    device = torch.device(args.device)
-            
-    precision = precisionmap[args.precision]
-    
-    terms = ["bonds", "repulsioncg"]
-    
-    ff = ForceField.create(mol, args.forcefield)
-                
-    parameters = Parameters(ff, mol, terms, device=device)
-    forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, 
-                    rfa=args.rfa, switch_dist=args.switch_dist
-                   )
-    system = System(mol.numAtoms, nreplicas=args.replicas,precision=precisionmap[args.precision], device=device)
-    system.set_positions(mol.coords)
-    system.set_velocities(maxwell_boltzmann(forces.par.masses, T=args.temperature, replicas=args.replicas))
-
-    return system, forces, device
-
 from train import PrepareTraining
 
 if __name__ == "__main__":
@@ -96,6 +72,13 @@ if __name__ == "__main__":
     learning_rate = 0.001
     n_accumulate = 100
     
+    # Create training directory
+    if not os.path.exists(args.train_dir):
+        os.mkdir(args.train_dir)
+    else:
+        shutil.rmtree(args.train_dir)
+        os.mkdir(args.train_dir)
+
     # Write description
     write_train_description(args, n_epochs, max_n_steps, learning_rate)
     
