@@ -1,6 +1,7 @@
 notebooks/training.ipynb
 notebooks/TrainParams.ipynb
 notebooks/plot_rmsds.ipynb
+notebooks/
 greener.py
 rmsd.py
 .ipynb_checkpoints
@@ -8,3 +9,4 @@ tests
 __pycache__
 dynamics.py
 nohup.out
+training/train_5_08_bonds/torchAD.log
