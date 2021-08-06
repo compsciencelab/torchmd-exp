@@ -10,3 +10,4 @@ __pycache__
 dynamics.py
 nohup.out
 training/train_5_08_bonds/torchAD.log
+prev_run.py

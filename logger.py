@@ -2,16 +2,6 @@ import datetime
 from statistics import mean
 import os
 
-class ParameterLogger:
-    """ Write parameters to a file during optimization"""
-
-    
-    
-    
-    
-
-
-
 def write_step(iteration, total_iterations, loss, n_steps, epoch, data_set, train_dir):
     """ Prints to a file the current state of the process """
     

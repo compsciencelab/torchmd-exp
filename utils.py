@@ -1,45 +1,15 @@
 from torch.utils.data import Dataset
+from torchmd.forcefields.forcefield import ForceField
+from torchmd.parameters import Parameters
+from torchmd.forces import Forces
+from torchmd.systems import System
+from torchmd.integrator import maxwell_boltzmann
+
 import os
 from moleculekit.molecule import Molecule
 import shutil
 import torch
 import numpy as np
-
-# Read a dataset of input files
-class ProteinDataset(Dataset):
-    def __init__(self, pdbids, pdbs_dir, psfs_dir, cg=False, device='cpu'):
-        self.pdbids = pdbids
-        self.pdbs_dir = pdbs_dir
-        self.psfs_dir = psfs_dir
-        self.set_size = len(pdbids)
-        self.device = device
-        self.cg = cg
-        
-    def __len__(self):
-        return self.set_size
-    
-    def __extract_CA(self, mol):
-        # Get the structure with only CAs
-            cwd = os.getcwd()
-            tmp_dir = cwd + '/tmpcg/'
-            os.mkdir(tmp_dir) # tmp directory to save full pdbs
-            mol = mol.copy()
-            mol.write(tmp_dir + 'molcg.pdb', 'name CA')
-            mol = Molecule(tmp_dir + 'molcg.pdb')
-            shutil.rmtree(tmp_dir)
-            return mol
-            
-    def __getitem__(self, index):
-        pdb_mol = os.path.join(self.pdbs_dir, self.pdbids[index] + '.pdb')
-        mol = Molecule(pdb_mol)
-        if self.cg:
-            mol = self.__extract_CA(mol)
-        
-        psf_mol = os.path.join(self.psfs_dir, self.pdbids[index] + '.psf')
-        mol.read(psf_mol)
-        
-        return mol
-
 
 # Functions to insert parameters
 
@@ -86,3 +56,77 @@ def set_ff_bond_parameters(ff, k0, req ,todo = "mult"):
             ff.prm["bonds"][key]['req'] += np.random.uniform(-req*ff.prm["bonds"][key]['req'], req*ff.prm["bonds"][key]['req'])
     
     return ff
+
+
+# Calculate rmsd
+
+# RMSD between two sets of coordinates with shape (n_atoms, 3) using the Kabsch algorithm
+# Returns the RMSD and whether convergence was reached
+def rmsd(c1, c2):
+    device = c1.device
+    # remove size 1 dimensions
+    pos1 = torch.squeeze(c1)
+    pos2 = torch.squeeze(c2)
+    
+    r1 = pos1.transpose(0, 1)
+    r2 = pos2.transpose(0, 1)
+    P = r1 - r1.mean(1).view(3, 1)
+    Q = r2 - r2.mean(1).view(3, 1)
+    cov = torch.matmul(P, Q.transpose(0, 1))
+    try:
+        U, S, V = torch.svd(cov)
+    except RuntimeError:
+        report("  SVD failed to converge", 0)
+        return torch.tensor([20.0], device=device), False
+    d = torch.tensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, torch.det(torch.matmul(V, U.transpose(0, 1)))]
+    ], device=device)
+    rot = torch.matmul(torch.matmul(V, d), U.transpose(0, 1))
+    rot_P = torch.matmul(rot, P)
+    diffs = rot_P - Q
+    msd = (diffs ** 2).sum() / diffs.size(1)
+    
+    return msd.sqrt(), True
+
+# Create system and forces
+
+def setup_system(args, mol):
+    
+    precisionmap = {'single': torch.float, 'double': torch.double}
+
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    device = torch.device(args.device)
+            
+    precision = precisionmap[args.precision]
+    
+    terms = ["bonds", "repulsioncg"]
+    
+    ff = ForceField.create(mol, args.forcefield)
+                
+    parameters = Parameters(ff, mol, terms, device=device)
+    forces = Forces(parameters, terms=terms, external=args.external, cutoff=args.cutoff, 
+                    rfa=args.rfa, switch_dist=args.switch_dist
+                   )
+    system = System(mol.numAtoms, nreplicas=args.replicas,precision=precisionmap[args.precision], device=device)
+    system.set_positions(mol.coords)
+    system.set_velocities(maxwell_boltzmann(forces.par.masses, T=args.temperature, replicas=args.replicas))
+
+    return system, forces
+
+# Write a file with the description of the training
+def write_train_description(args, n_epochs, max_n_steps, learning_rate):
+    # Write a description of the training
+    description_list = [f'Epochs: {n_epochs} epochs \n', 
+                       f'Max steps: {max_n_steps} \n',
+                       f'Learning rate: {learning_rate}  \n', 
+                       f'Saving trajs for: {args.prot_save} \n',
+                       f'Metro: {args.metro} \n',
+                       f'cuda: {args.device} \n', 
+                       f'Parameters modified with: {args.par_mod} ( -param*0,4, param*0,4) \n']
+    
+    with open(os.path.join(args.train_dir, 'description.txt'), 'w') as des_file:
+        des_file.writelines(description_list)
+    des_file.close()
