@@ -6,8 +6,11 @@ from logger import write_step, write_epoch
 
 from torchmd.forcefields.forcefield import ForceField
 from random import shuffle
+from statistics import mean
+import json
 import os
 import torch
+import numpy as np
 
 
 class PrepareTraining:
@@ -141,7 +144,7 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
                 # Molecule
                 mol = val_set[ni]
                 # Initialize system
-                system, forces, device = setup_system(args, mol)
+                system, forces = setup_system(args, mol)
                 # Forward pass
                 native_coords, last_coords = propagator(system, forces, trainff, mol, n_steps)
                 loss, passed = rmsd(native_coords, last_coords)
@@ -158,13 +161,13 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
                        }
         
         # Write files
-        write_training_results(epoch, train_rmsds, val_rmsds, trainff, params_error)
+        write_training_results(args, epoch, train_rmsds, val_rmsds, trainff, params_error)
         
         # Log epoch
         write_epoch(epoch, n_epochs, train_rmsds, train_dir=args.train_dir)
         
         
-def write_training_results(epoch, train_rmsds, val_rmsds, trainff, params_error):       
+def write_training_results(args, epoch, train_rmsds, val_rmsds, trainff, params_error):       
         with open (os.path.join(args.train_dir,'rmsds.txt'), 'a') as file_rmsds:
             file_rmsds.write(f'EPOCH {epoch} \n')
             file_rmsds.write(f'{str(mean(train_rmsds))} \n' )
