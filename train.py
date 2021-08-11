@@ -59,7 +59,7 @@ class PrepareTraining:
         native_bond_params = native_params.bond_params.detach().cpu().numpy().copy()
         
         # Modify the priors
-        trainff = set_ff_bond_parameters(trainff, k0=0.01, req=0.01, todo=self.par_mod)
+        trainff = set_ff_bond_parameters(trainff, k0=0.4, req=0.4, todo=self.par_mod)
         self.train_parameters = TrainableParameters(trainff, device=self.device)
     
         return native_bond_params, self.train_parameters, trainff
@@ -73,7 +73,7 @@ class PrepareTraining:
     
     def set_optimizer(self, learning_rate):
         # Start optimizer
-        optim = torch.optim.Adam([self.propagator.bond_params], lr=learning_rate)
+        optim = torch.optim.Adam(self.propagator.parameters(), lr=learning_rate)
         
         return optim
     
@@ -84,6 +84,9 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
     native_bond_params, train_parameters, trainff = init_train.set_training_parameters()
     propagator = init_train.set_propagator()
     optim = init_train.set_optimizer(learning_rate)
+    
+    # Write initial differences
+    write_parameters_error(args, train_parameters, native_bond_params)
     
     for epoch in range(n_epochs):
         if epoch == 37:
@@ -130,9 +133,9 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
             if passed:
                 loss_log = torch.log(1.0 + loss)
                 loss_log.backward()
-            #if (i + 1) % n_accumulate == 0:     
-            optim.step()
-            optim.zero_grad()  
+            if (i + 1) % n_accumulate == 0:     
+                optim.step()
+                optim.zero_grad()  
         
             # Insert the updated bond parameters to the full parameters dictionary
             trainff.prm["bonds"] = insert_bond_params(mol, forces, trainff.prm["bonds"])
@@ -153,15 +156,24 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
                 # Log current state of the program
                 write_step(i, val_set, loss, n_steps, epoch, data_set="Validation", train_dir=args.train_dir)
         
+        print("Model's state_dict:")
+        for param_tensor in propagator.state_dict():
+            print(param_tensor, "\t", propagator.state_dict()[param_tensor].size())
+        # Print optimizer's state_dict
+        print("Optimizer's state_dict:")
+        for var_name in optim.state_dict():
+            print(var_name, "\t", optim.state_dict()[var_name])
+
         # Compute the error between native and current params
-        curr_params = train_parameters.bond_params.detach().cpu().numpy().copy()
-        bond_params_difference = np.square(native_bond_params - curr_params)
-        params_error = {"k_err": np.sqrt(bond_params_difference.sum(axis=0)[0].item()),
-                       "req_err": np.sqrt(bond_params_difference.sum(axis=0)[1].item())
-                       }
+        #curr_params = train_parameters.bond_params.detach().cpu().numpy().copy()
+        #bond_params_difference = np.square(native_bond_params - curr_params)
+        #params_error = {"k_err": np.sqrt(bond_params_difference.sum(axis=0)[0].item()),
+        #               "req_err": np.sqrt(bond_params_difference.sum(axis=0)[1].item())
+        #               }
         
         # Write files
         write_training_results(args, epoch, train_rmsds, val_rmsds, trainff, params_error)
+        write_parameters_error(args, train_parameters, native_bond_params)
         
         # Log epoch
         write_epoch(epoch, n_epochs, train_rmsds, train_dir=args.train_dir)
@@ -181,7 +193,17 @@ def write_training_results(args, epoch, train_rmsds, val_rmsds, trainff, params_
         with open(os.path.join(args.train_dir, 'ffparameters.txt'), 'w') as file_params: 
             file_params.write(json.dumps(trainff.prm["bonds"], indent=4))
         file_params.close()
+
+def write_parameters_error(args, train_parameters, native_bond_params):
         
+        # Compute the error between native and current params
+        n_params = len(native_bond_params)
+        curr_params = train_parameters.bond_params.detach().cpu().numpy().copy()
+        bond_params_difference = np.square(native_bond_params - curr_params)
+        params_error = {"k_err": np.sqrt(bond_params_difference.sum(axis=0)[0].item() / n_params),
+                       "req_err": np.sqrt(bond_params_difference.sum(axis=0)[1].item() / n_params)
+                       }
+
         with open(os.path.join(args.train_dir, 'ffparameters_error.txt'), 'a') as file_params_error: 
             file_params_error.write(json.dumps(params_error, indent=2))
         file_params_error.close()

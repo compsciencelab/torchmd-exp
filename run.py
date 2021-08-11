@@ -67,8 +67,8 @@ if __name__ == "__main__":
     args = get_args()
     
     # Hyperparameters
-    n_epochs = 50
-    max_n_steps = 2000
+    n_epochs = 10
+    max_n_steps = 250
     learning_rate = 0.001
     n_accumulate = 100
     
