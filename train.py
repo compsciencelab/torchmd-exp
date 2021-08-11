@@ -1,7 +1,7 @@
 from prot_dataset import ProteinDataset
 from trainparameters import TrainableParameters
 from propagator import Propagator
-from utils import set_ff_bond_parameters, setup_system, insert_bond_params, rmsd
+from utils import set_ff_bond_parameters, setup_system, insert_bond_params, rmsd, insert_angle_params
 from logger import write_step, write_epoch
 
 from torchmd.forcefields.forcefield import ForceField
@@ -94,8 +94,8 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
         
         train_rmsds, val_rmsds = [], []
         n_steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up n_steps over epochs
-        train_inds = list(range(len(train_set)))
-        val_inds = list(range(len(val_set)))
+        train_inds = list(range(len(train_set) - 1000))
+        val_inds = list(range(len(val_set) - 100))
         shuffle(train_inds)
         shuffle(val_inds)
             
@@ -139,7 +139,9 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
         
             # Insert the updated bond parameters to the full parameters dictionary
             trainff.prm["bonds"] = insert_bond_params(mol, forces, trainff.prm["bonds"])
-        
+            trainff.prm["angles"] = insert_angle_params(mol, forces, trainff.prm["angles"])
+                
+            
         # Validation set
         propagator.eval()
         with torch.no_grad():
@@ -190,8 +192,12 @@ def write_training_results(args, epoch, train_rmsds, val_rmsds, trainff, params_
             file_val_rmsds.write(f'{str(mean(val_rmsds))} \n' )
         file_val_rmsds.close()
         
-        with open(os.path.join(args.train_dir, 'ffparameters.txt'), 'w') as file_params: 
+        with open(os.path.join(args.train_dir, 'ff_bond_parameters.txt'), 'w') as file_params: 
             file_params.write(json.dumps(trainff.prm["bonds"], indent=4))
+        file_params.close()
+        
+        with open(os.path.join(args.train_dir, 'ff_angle_parameters.txt'), 'w') as file_params: 
+            file_params.write(json.dumps(trainff.prm["angles"], indent=4))
         file_params.close()
 
 def write_parameters_error(args, train_parameters, native_bond_params):
