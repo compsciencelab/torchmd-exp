@@ -1,7 +1,0 @@
-Epochs: 10 epochs 
-Max steps: 250 
-Learning rate: 0.001  
-Saving trajs for: 3SWY_A 
-Metro: 1 
-cuda: cpu 
-Parameters modified with: uniform ( -param*0,4, param*0,4) 

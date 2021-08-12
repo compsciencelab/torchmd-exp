@@ -1,7 +1,8 @@
 data_dir: /workspace7/torchmd-AD/train_val_torchmd
 prot_save: 3SWY_A
-train_dir: training/train_11_08_bonds_angles_uni
+train_dir: training/train_terms
 device: cuda:1
 metro: 17
 par_mod: uniform 
+forceterms: bonds repulsioncg angles
 verbose: True

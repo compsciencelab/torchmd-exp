@@ -40,7 +40,7 @@ def get_args(arguments=None):
     parser.add_argument('--precision', default='single', type=str, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--replicas', type=int, default=1, help='Number of different replicas to run')
     parser.add_argument('--forcefield', default="/shared/carles/torchMD-DMS/parameters/ca_priors-dihedrals_general.yaml", help='Forcefield .yaml file')
-    parser.add_argument('--forceterms', nargs='+', default="[bonds]", help='Forceterms to include, e.g. --forceterms Bonds LJ')
+    parser.add_argument('--forceterms', nargs='+', default="bonds", help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--rfa', default=False, action='store_true', help='Enable reaction field approximation')
     parser.add_argument('--switch_dist', default=None, type=float, help='Switching distance for LJ')
     parser.add_argument('--cutoff', default=None, type=float, help='LJ/Elec/Bond cutoff')
@@ -66,6 +66,7 @@ from train import PrepareTraining
 
 if __name__ == "__main__":
     args = get_args()
+    args.forceterms = args.forceterms.split(' ')
     
     # Hyperparameters
     n_epochs = 50

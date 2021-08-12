@@ -99,7 +99,7 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
     optim = init_train.set_optimizer(learning_rate)
     
     # Load Systems and Forces
-    terms = ["bonds", "repulsioncg", "angles"]
+    terms = args.forceterms
     precisionmap = {'single': torch.float, 'double': torch.double}
     precision = precisionmap[args.precision]
     
