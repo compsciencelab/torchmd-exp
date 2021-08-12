@@ -60,9 +60,10 @@ class SystemsDataset(Dataset):
                                         'params': parameters,
                                         'forces': forces,
                                         'system': system}
+            
             n_systems += 1
             reminder = n_systems % 10
             if self.args.verbose and reminder == 0:
                 print(f'{n_systems} systems built')
-                
+            
         return systems_dataset
