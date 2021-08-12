@@ -16,6 +16,8 @@ import copy
 
 class PrepareTraining:
     def __init__(self, args):
+        self.train_set = args.train_set
+        self.val_set = args.val_set
         self.device = torch.device(args.device)
         self.data_dir = args.data_dir
         self.forcefield = args.forcefield
@@ -31,8 +33,8 @@ class PrepareTraining:
         cgdms_dir = os.path.dirname(os.path.realpath(__file__))
         dataset_dir = os.path.join(cgdms_dir, "datasets")
 
-        train_proteins = [l.rstrip() for l in open(os.path.join(dataset_dir, "train.txt"))]
-        val_proteins   = [l.rstrip() for l in open(os.path.join(dataset_dir, "val.txt"  ))]
+        train_proteins = [l.rstrip() for l in open(os.path.join(dataset_dir, self.train_set))]
+        val_proteins   = [l.rstrip() for l in open(os.path.join(dataset_dir, self.val_set  ))]
         
         return train_proteins, val_proteins
     
@@ -45,8 +47,8 @@ class PrepareTraining:
         train_val_dir = self.data_dir
 
         # Lists with the names of the train and validation proteins
-        train_proteins = [l.rstrip() for l in open(os.path.join(dataset_dir, "train.txt"))]
-        val_proteins   = [l.rstrip() for l in open(os.path.join(dataset_dir, "val.txt"  ))]
+        train_proteins = [l.rstrip() for l in open(os.path.join(dataset_dir, self.train_set))]
+        val_proteins   = [l.rstrip() for l in open(os.path.join(dataset_dir, self.val_set  ))]
     
         # Structure and topology directories
         pdbs_dir = os.path.join(train_val_dir, 'pdb')
@@ -138,7 +140,7 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
             # Initialize system
             system = copy.deepcopy(train_systems.systems_dataset[mol_name]['system'])
             forces = copy.deepcopy(train_systems.systems_dataset[mol_name]['forces'])
-            
+
             # Forward pass
             currprot = mol_name # Name of protein being trained 
             # Save the trajectory if it is required

@@ -58,6 +58,8 @@ def get_args(arguments=None):
     parser.add_argument('--par_mod', default='mult', help='Modification to do to the parameters')
     parser.add_argument('--verbose', default=None, help='Add verbose')
     parser.add_argument('--lr', default=0.001, type=int, help='Learning rate')
+    parser.add_argument('--train_set', default="train.txt", help='Train dataset proteins')
+    parser.add_argument('--val_set', default="val.txt", help='Validation dataset proteins')
 
     args = parser.parse_args(args=arguments)
 

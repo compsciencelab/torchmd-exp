@@ -1,4 +1,6 @@
-data_dir: /workspace7/torchmd-AD/train_val_torchmd
+data_dir: /workspace7/torchmd-AD/train_val_short
+train_set: train_short.txt
+val_set: val_short.txt
 prot_save: 3SWY_A
 train_dir: training/train_terms
 device: cuda:1
