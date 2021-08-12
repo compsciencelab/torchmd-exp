@@ -16,6 +16,8 @@ class ProteinDataset(Dataset):
         self.device = device
         self.cg = cg
         
+        self.molecules = self.__load_molecules()
+        
     def __len__(self):
         return self.set_size
     
@@ -29,14 +31,19 @@ class ProteinDataset(Dataset):
             mol = Molecule(tmp_dir + 'molcg.pdb')
             shutil.rmtree(tmp_dir)
             return mol
+    
+    def __load_molecules(self):
+        molecules = []
+        for protein in self.pdbids:
+            pdb_mol = os.path.join(self.pdbs_dir, protein + '.pdb')
+            mol = Molecule(pdb_mol)
             
+            psf_mol = os.path.join(self.psfs_dir, protein + '.psf')
+            mol.read(psf_mol)
+            molecules.append(mol)
+        
+        return molecules
+    
     def __getitem__(self, index):
-        pdb_mol = os.path.join(self.pdbs_dir, self.pdbids[index] + '.pdb')
-        mol = Molecule(pdb_mol)
-        if self.cg:
-            mol = self.__extract_CA(mol)
         
-        psf_mol = os.path.join(self.psfs_dir, self.pdbids[index] + '.psf')
-        mol.read(psf_mol)
-        
-        return mol
+        return self.molecules[index]

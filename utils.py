@@ -4,6 +4,7 @@ from torchmd.parameters import Parameters
 from torchmd.forces import Forces
 from torchmd.systems import System
 from torchmd.integrator import maxwell_boltzmann
+from systems_dataset import SystemsDataset
 
 import os
 from moleculekit.molecule import Molecule

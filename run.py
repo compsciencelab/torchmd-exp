@@ -56,6 +56,7 @@ def get_args(arguments=None):
     parser.add_argument('--train_dir', default='/training/train0', help='Directory to save the training results')
     parser.add_argument('--metro', default='', help='Metro where you are working')
     parser.add_argument('--par_mod', default='mult', help='Modification to do to the parameters')
+    parser.add_argument('--verbose', default=None, help='Add verbose')
 
     args = parser.parse_args(args=arguments)
 
@@ -67,8 +68,8 @@ if __name__ == "__main__":
     args = get_args()
     
     # Hyperparameters
-    n_epochs = 10
-    max_n_steps = 250
+    n_epochs = 50
+    max_n_steps = 2000
     learning_rate = 0.001
     n_accumulate = 100
     
@@ -81,7 +82,6 @@ if __name__ == "__main__":
 
     # Write description
     write_train_description(args, n_epochs, max_n_steps, learning_rate)
-    
     
     # Initialize Training
     init_train = PrepareTraining(args)
