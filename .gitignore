@@ -11,5 +11,7 @@ dynamics.py
 nohup.out
 training/train_5_08_bonds/torchAD.log
 training/train_6_08_bonds_params_0.001/torchAD.log
+training/train_11_08_bonds_angles_uni/torchAD.log
+training/train_12_08_angles_250steps/torchAD.log
 prev_run.py
 train.yaml
