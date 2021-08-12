@@ -150,15 +150,16 @@ def setup_system(args, mol):
     return system, forces
 
 # Write a file with the description of the training
-def write_train_description(args, n_epochs, max_n_steps, learning_rate):
+def write_train_description(args):
     # Write a description of the training
-    description_list = [f'Epochs: {n_epochs} epochs \n', 
-                       f'Max steps: {max_n_steps} \n',
-                       f'Learning rate: {learning_rate}  \n', 
-                       f'Saving trajs for: {args.prot_save} \n',
-                       f'Metro: {args.metro} \n',
-                       f'cuda: {args.device} \n', 
-                       f'Parameters modified with: {args.par_mod} ( -param*0,4, param*0,4) \n']
+    description_list = [f'Saving trajs for: {args.prot_save} \n',
+                        f'Metro: {args.metro} \n',
+                        f'cuda: {args.device} \n',
+                        f'Terms: {args.forceterms} \n',
+                        f'Epochs: {args.n_epochs} \n',
+                        f'Max steps: {args.max_steps} \n',
+                        f'Learning rate: {args.lr} \n',
+                        f'Parameters modified with: {args.par_mod} ( -param*0,4, param*0,4) \n']
     
     with open(os.path.join(args.train_dir, 'description.txt'), 'w') as des_file:
         des_file.writelines(description_list)

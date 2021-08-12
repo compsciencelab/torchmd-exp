@@ -48,15 +48,16 @@ def get_args(arguments=None):
     parser.add_argument('--output', default='output', help='Output filename for trajectory')
     parser.add_argument('--log-dir', default='./', help='Log directory')
     parser.add_argument('--minimize', default=None, type=int, help='Minimize the system for `minimize` steps')
-    parser.add_argument('--steps',type=int,default=1000,help='Total number of simulation steps')
+    parser.add_argument('--max_steps',type=int,default=2000,help='Total number of simulation steps')
     parser.add_argument('--output_period',type=int,default=100,help='Store trajectory and print monitor.csv every period')
     parser.add_argument('--save-period',type=int,default=10,help='Dump trajectory to npy file. By default 10 times output-period.')
-    parser.add_argument('--n_epochs',type=int,default=10,help='Number of epochs.')
+    parser.add_argument('--n_epochs',type=int,default=50,help='Number of epochs.')
     parser.add_argument('--prot_save', default=None, help='Chain that will be selected to save its trajectory each epoch')
     parser.add_argument('--train_dir', default='/training/train0', help='Directory to save the training results')
     parser.add_argument('--metro', default='', help='Metro where you are working')
     parser.add_argument('--par_mod', default='mult', help='Modification to do to the parameters')
     parser.add_argument('--verbose', default=None, help='Add verbose')
+    parser.add_argument('--lr', default=0.001, type=int, help='Learning rate')
 
     args = parser.parse_args(args=arguments)
 
@@ -69,9 +70,9 @@ if __name__ == "__main__":
     args.forceterms = args.forceterms.split(' ')
     
     # Hyperparameters
-    n_epochs = 50
-    max_n_steps = 2000
-    learning_rate = 0.001
+    n_epochs = args.n_epochs
+    max_n_steps = args.max_steps
+    learning_rate = args.lr
     n_accumulate = 100
     
     # Create training directory
@@ -82,7 +83,7 @@ if __name__ == "__main__":
         os.mkdir(args.train_dir)
 
     # Write description
-    write_train_description(args, n_epochs, max_n_steps, learning_rate)
+    write_train_description(args)
     
     # Initialize Training
     init_train = PrepareTraining(args)

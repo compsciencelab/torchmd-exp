@@ -66,6 +66,4 @@ class SystemsDataset(Dataset):
             if self.args.verbose and reminder == 0:
                 print(f'{n_systems} systems built')
             
-            if n_systems == 10:
-                break
         return systems_dataset

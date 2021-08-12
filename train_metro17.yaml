@@ -5,4 +5,7 @@ device: cuda:1
 metro: 17
 par_mod: uniform 
 forceterms: bonds repulsioncg angles
+n_epochs: 50
+max_steps: 2000
+lr: 0.001
 verbose: True
