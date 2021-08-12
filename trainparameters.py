@@ -112,7 +112,11 @@ class TrainableParameters:
             uqbonds = np.array(list(product(range(0,20), range(0,20))))
             self.bonds = torch.tensor(uqbonds.astype(np.int64))
             self.bond_params = self.make_bonds(ff, uqatomtypes[indexes[uqbonds]])
-
+        if "angles" in terms and len(ff.prm['angles']):
+            uqangles = np.array(list(product(range(0,20), range(0,20), range(0,20))))
+            self.angles = torch.tensor(uqangles.astype(np.int64))
+            self.angle_params = self.make_angles(ff, uqatomtypes[indexes[uqangles]])
+            
     def make_charges(self, ff, atomtypes):
         return torch.tensor([ff.get_charge(at) for at in atomtypes])
 
@@ -141,6 +145,9 @@ class TrainableParameters:
     def make_bonds(self, ff, uqbondatomtypes):
         return torch.tensor([ff.get_bond(*at) for at in uqbondatomtypes])
     
+    def make_angles(self, ff, uqangleatomtypes):
+        return torch.tensor([ff.get_angle(*at) for at in uqangleatomtypes])
+
     def extract_bond_params(self, ff, mol):
         all_bonds_dict = ff.prm['bonds']
     

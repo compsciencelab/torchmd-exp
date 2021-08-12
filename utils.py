@@ -4,6 +4,7 @@ from torchmd.parameters import Parameters
 from torchmd.forces import Forces
 from torchmd.systems import System
 from torchmd.integrator import maxwell_boltzmann
+from systems_dataset import SystemsDataset
 
 import os
 from moleculekit.molecule import Molecule
@@ -42,6 +43,34 @@ def insert_bond_params(mol, forces, all_bonds_dict):
                 
     return all_bonds_dict
 
+def get_mol_angles(mol):
+    angles = []
+    for index in range(len(mol.atomtype) - 2):
+        angle = f'({mol.atomtype[index]}, {mol.atomtype[index+1]}, {mol.atomtype[index+2]})'
+        angles.append(angle)
+    return angles
+
+def create_angles_dict(mol, forces):
+    angle_names = get_mol_angles(mol)
+    angle_params = forces.par.angle_params.tolist()
+    params_names = ['k0', 'theta0']
+    
+    angle_params_list = []
+    for values in angle_params:
+        angle_params_list.append(dict(zip(params_names, values)))
+    mol_angle_dict = dict(zip(angle_names, angle_params_list))
+    
+    return mol_angle_dict
+
+def insert_angle_params(mol, forces, all_angles_dict):
+    mol_angles_dict = create_angles_dict(mol, forces)
+    
+    for angle in mol_angles_dict:
+        for key in all_angles_dict:
+            if angle == key:
+                all_angles_dict[key] = mol_angles_dict[key]
+    return all_angles_dict
+
 # Functions to set the ff bond parameters 
 
 def set_ff_bond_parameters(ff, k0, req ,todo = "mult"):
@@ -54,7 +83,11 @@ def set_ff_bond_parameters(ff, k0, req ,todo = "mult"):
             # Add a term to each parameter sampled from a uniform distribution(-multfactor*term, multfactor*term)
             ff.prm["bonds"][key]['k0'] += np.random.uniform(-k0*ff.prm["bonds"][key]['k0'], k0*ff.prm["bonds"][key]['k0'])
             ff.prm["bonds"][key]['req'] += np.random.uniform(-req*ff.prm["bonds"][key]['req'], req*ff.prm["bonds"][key]['req'])
-    
+            
+    for key in ff.prm["angles"]:
+        ff.prm["angles"][key]['k0'] += np.random.uniform(-k0*ff.prm["angles"][key]['k0'], k0*ff.prm["angles"][key]['k0'])
+        ff.prm["angles"][key]['theta0'] += np.random.uniform(-req*ff.prm["angles"][key]['theta0'], req*ff.prm["angles"][key]['theta0'])
+
     return ff
 
 
@@ -102,7 +135,7 @@ def setup_system(args, mol):
             
     precision = precisionmap[args.precision]
     
-    terms = ["bonds", "repulsioncg"]
+    terms = ["bonds", "repulsioncg", "angles"]
     
     ff = ForceField.create(mol, args.forcefield)
                 
