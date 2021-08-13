@@ -39,7 +39,7 @@ def get_args(arguments=None):
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
     parser.add_argument('--precision', default='single', type=str, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--replicas', type=int, default=1, help='Number of different replicas to run')
-    parser.add_argument('--forcefield', default="/shared/carles/torchMD-DMS/parameters/ca_priors-dihedrals_general.yaml", help='Forcefield .yaml file')
+    parser.add_argument('--forcefield', default="/shared/carles/torchMD-DMS/parameters/ca_priors-angles_general.yaml", help='Forcefield .yaml file')
     parser.add_argument('--forceterms', nargs='+', default="bonds", help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--rfa', default=False, action='store_true', help='Enable reaction field approximation')
     parser.add_argument('--switch_dist', default=None, type=float, help='Switching distance for LJ')
@@ -57,7 +57,7 @@ def get_args(arguments=None):
     parser.add_argument('--metro', default='', help='Metro where you are working')
     parser.add_argument('--par_mod', default='mult', help='Modification to do to the parameters')
     parser.add_argument('--verbose', default=None, help='Add verbose')
-    parser.add_argument('--lr', default=0.001, type=int, help='Learning rate')
+    parser.add_argument('--lr', default=0.001, type=float, help='Learning rate')
     parser.add_argument('--train_set', default="train.txt", help='Train dataset proteins')
     parser.add_argument('--val_set', default="val.txt", help='Validation dataset proteins')
 

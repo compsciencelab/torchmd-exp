@@ -1,0 +1,14 @@
+data_dir: /workspace7/torchmd-AD/train_val_torchmd
+train_set: train.txt
+val_set: val.txt
+prot_save: 3SWY_A
+train_dir: training/train_13_08_angles_250s
+device: cuda:1
+metro: 17
+par_mod: uniform 
+forcefield: /shared/carles/torchMD-DMS/parameters/ca_priors-angles_general.yaml
+forceterms: bonds repulsioncg angles
+n_epochs: 50
+max_steps: 250
+lr: 0.0001
+verbose: True

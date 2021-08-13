@@ -164,9 +164,9 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
             if passed:
                 loss_log = torch.log(1.0 + loss)
                 loss_log.backward()
-            #if (i + 1) % n_accumulate == 0:     
-            optim.step()
-            optim.zero_grad()  
+            if (i + 1) % n_accumulate == 0:     
+                optim.step()
+                optim.zero_grad()  
         
             # Insert the updated bond parameters to the full parameters dictionary
             trainff.prm["bonds"] = insert_bond_params(mol, forces, trainff.prm["bonds"])
@@ -190,12 +190,6 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
                 # Log current state of the program
                 write_step(i, val_set, loss, n_steps, epoch, data_set="Validation", train_dir=args.train_dir)
         
-        # Compute the error between native and current params
-        #curr_params = train_parameters.bond_params.detach().cpu().numpy().copy()
-        #bond_params_difference = np.square(native_bond_params - curr_params)
-        #params_error = {"k_err": np.sqrt(bond_params_difference.sum(axis=0)[0].item()),
-        #               "req_err": np.sqrt(bond_params_difference.sum(axis=0)[1].item())
-        #               }
         
         # Write files
         write_training_results(args, epoch, train_rmsds, val_rmsds, trainff)

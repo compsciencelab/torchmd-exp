@@ -116,6 +116,10 @@ class TrainableParameters:
             uqangles = np.array(list(product(range(0,20), range(0,20), range(0,20))))
             self.angles = torch.tensor(uqangles.astype(np.int64))
             self.angle_params = self.make_angles(ff, uqatomtypes[indexes[uqangles]])
+        if "dihedrals" in terms and len(ff.prm['dihedrals']):
+            uqdihedrals = np.array(list(product(range(0,20), range(0,20), range(0,20), range(0,20))))
+            self.dihedrals = torch.tensor(uqdihedrals.astype(np.int64))
+            self.dihedral_params = self.make_dihedrals(ff, uqatomtypes[indexes[uqdihedrals]])
             
     def make_charges(self, ff, atomtypes):
         return torch.tensor([ff.get_charge(at) for at in atomtypes])
@@ -147,6 +151,26 @@ class TrainableParameters:
     
     def make_angles(self, ff, uqangleatomtypes):
         return torch.tensor([ff.get_angle(*at) for at in uqangleatomtypes])
+    
+    def make_dihedrals(self, ff, uqdihedralatomtypes):
+        from collections import defaultdict
+
+        dihedrals = defaultdict(lambda: {"idx": [], "params": []})
+
+        for i, at in enumerate(uqdihedralatomtypes):
+            terms = ff.get_dihedral(*at)
+            for j, term in enumerate(terms):
+                dihedrals[j]["idx"].append(i)
+                dihedrals[j]["params"].append(term)
+
+        maxterms = max(dihedrals.keys()) + 1
+        newdihedrals = []
+        for j in range(maxterms):
+            dihedrals[j]["idx"] = torch.tensor(dihedrals[j]["idx"])
+            dihedrals[j]["params"] = torch.tensor(dihedrals[j]["params"])
+            newdihedrals.append(dihedrals[j])
+
+        return newdihedrals
 
     def extract_bond_params(self, ff, mol):
         all_bonds_dict = ff.prm['bonds']
