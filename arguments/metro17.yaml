@@ -10,5 +10,5 @@ forcefield: /shared/carles/torchMD-DMS/parameters/ca_priors-angles_general.yaml
 forceterms: bonds repulsioncg angles
 n_epochs: 50
 max_steps: 250
-lr: 0.0001
+lr: 0.001
 verbose: True

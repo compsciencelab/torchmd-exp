@@ -136,6 +136,7 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
             # Molecule
             mol = train_set[ni]
             mol_name = mol.viewname[:-4]
+            print(mol_name, mol.coords[0][0])
             
             # Initialize system
             system = copy.deepcopy(train_systems.systems_dataset[mol_name]['system'])
@@ -164,9 +165,9 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
             if passed:
                 loss_log = torch.log(1.0 + loss)
                 loss_log.backward()
-            if (i + 1) % n_accumulate == 0:     
-                optim.step()
-                optim.zero_grad()  
+            #if (i + 1) % n_accumulate == 0:     
+            optim.step()
+            optim.zero_grad()  
         
             # Insert the updated bond parameters to the full parameters dictionary
             trainff.prm["bonds"] = insert_bond_params(mol, forces, trainff.prm["bonds"])

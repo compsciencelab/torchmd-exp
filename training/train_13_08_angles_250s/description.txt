@@ -4,5 +4,5 @@ cuda: cuda:1
 Terms: ['bonds', 'repulsioncg', 'angles'] 
 Epochs: 50 
 Max steps: 250 
-Learning rate: 0.0001 
+Learning rate: 0.001 
 Parameters modified with: uniform ( -param*0,4, param*0,4) 
