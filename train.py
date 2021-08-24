@@ -136,7 +136,7 @@ def train(args, n_epochs, max_n_steps, learning_rate, n_accumulate, init_train):
             # Molecule
             mol = train_set[ni]
             mol_name = mol.viewname[:-4]
-            print(mol_name, mol.coords[0][0])
+            
             
             # Initialize system
             system = copy.deepcopy(train_systems.systems_dataset[mol_name]['system'])

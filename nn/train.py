@@ -73,8 +73,10 @@ if __name__ == "__main__":
         externalmodule = importlib.import_module(args.external["module"])
         embeddings = torch.tensor(args.external["embeddings"]).repeat(args.replicas, 1)
         external = externalmodule.External(args.external["file"], embeddings, device)
-
-    print(args.forceterms)
+    
+    learning_rate = 1e-4
+    optim = torch.optim.Adam(external.model.parameters(), lr=learning_rate)
+    
 
     ff = ForceField.create(mol, args.forcefield)
     cln_parameters = Parameters(ff, mol, terms=args.forceterms, device=device)
@@ -94,15 +96,23 @@ if __name__ == "__main__":
     
     iterator = tqdm(range(1,int(args.steps/args.output_period)+1))
     Epot = forces.compute(system.pos, system.box, system.forces)
+    
+    
     currpos = system.pos.clone()
-    for i in iterator:
-        # viewFrame(mol, system.pos, system.forces)
-        Ekin, Epot, T = integrator.step(niter=args.output_period)
-        wrapper.wrap(system.pos, system.box)
-        currpos = system.pos.clone()
+    loss, passed = rmsd(native_coords[0], currpos[0])
+    
+    loss_log = torch.log(1.0 + loss)
+    loss_log.backward()
+    optim.step()
+    
+    #for i in iterator:
+         #viewFrame(mol, system.pos, system.forces)
+    #    Ekin, Epot, T = integrator.step(niter=args.output_period)
+    #    wrapper.wrap(system.pos, system.box)
+    #    currpos = system.pos.clone()
 
-    for rep, coords in enumerate(native_coords):
-        print('RMSD GOOD: ', rmsd(native_coords[rep], currpos[rep]))
+    #for rep, coords in enumerate(native_coords):
+    #    print('RMSD GOOD: ', rmsd(native_coords[rep], currpos[rep]))
         
         
         

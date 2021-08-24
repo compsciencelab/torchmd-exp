@@ -4,7 +4,7 @@ forceterms:
 - Bonds
 - RepulsionCG
 - Dihedrals
-rfa: false
+rfa: False
 precision: double
 replicas: 10
 temperature: 350
