@@ -1,0 +1,12 @@
+pytorch-lightning>=1.2
+matplotlib
+scipy
+h5py
+ase
+numpy
+pytorch>=1.6
+torchvision
+cudatoolkit=11.1
+nvidia
+pytorch-geometric
+rusty1s
