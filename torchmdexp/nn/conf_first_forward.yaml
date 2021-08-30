@@ -1,0 +1,18 @@
+device: cuda:1
+forcefield: /shared/carles/torchMD-DMS/nn/data/ca_priors-dihedrals_general_2xweaker.yaml
+forceterms:
+- Bonds
+- RepulsionCG
+- Dihedrals
+rfa: False
+precision: double
+replicas: 10
+temperature: 350
+seed: 1
+output: output
+output_period: 10
+steps: 2000
+external:
+  module: torchmdnet.calculators
+  embeddings: [4, 4, 5, 8, 6, 13, 2, 13, 7, 4]
+  file: /shared/carles/torchMD-DMS/nn/data/epoch=47-val_loss=739.5398-test_loss=21.5975.ckpt

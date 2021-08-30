@@ -1,0 +1,26 @@
+device: cuda:0
+forcefield: /shared/carles/torchMD-DMS/nn/data/ca_priors-dihedrals_general_2xweaker.yaml
+forceterms:
+- Bonds
+- RepulsionCG
+- Dihedrals
+exclusions: ('bonds')
+langevin_gamma: 1
+langevin_temperature: 350
+log_dir: cln_64trajs_350_ts1
+output: output
+output_period: 1
+precision: double
+replicas: 10
+rfa: false
+save_period: 1
+seed: 1
+steps: 200
+topology: /shared/carles/torchMD-DMS/nn/data/cln_ca_top_dih.psf
+coordinates: /shared/carles/torchMD-DMS/nn/data/chignolin_ca_initial_coords.xtc
+temperature: 350
+timestep: 1
+external:
+  module: torchmdnet.calculators
+  embeddings: [4, 4, 5, 8, 6, 13, 2, 13, 7, 4]
+  file: /shared/carles/torchMD-DMS/nn/data/epoch=47-val_loss=739.5398-test_loss=21.5975.ckpt
