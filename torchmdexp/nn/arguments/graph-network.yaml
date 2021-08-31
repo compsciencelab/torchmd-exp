@@ -11,15 +11,16 @@ embedding_dimension: 256
 forceterms: 
     - repulsioncg 
 inference_batch_size: 128
-lr: 4.e-4
+lr: 1.e-3
 lr_factor: 0.8
 lr_min: 1.e-7
-lr_patience: 15
+lr_patience: 0.01
 lr_warmup_steps: 0
-max_steps: 250
+log_dir: /shared/carles/torchmd-exp/torchmdexp/nn/trainings/cln_prelambda/
+max_steps: 2000
 neighbor_embedding: true
 ngpus: -1
-num_epochs: 3000
+num_epochs: 50
 num_filters: 256
 num_layers: 6
 num_nodes: 1
@@ -28,6 +29,7 @@ num_workers: 4
 rbf_type: expnorm
 save_interval: 10
 seed: 1
+step_update: 5
 test_interval: 10
 test_size: 0.1
 train_set: train_short.txt
