@@ -15,3 +15,6 @@ training/train_11_08_bonds_angles_uni/torchAD.log
 training/train_12_08_angles_250steps/torchAD.log
 prev_run.py
 train.yaml
+build/
+dist/
+torchmd_exp.egg-info/

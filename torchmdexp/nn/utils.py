@@ -1,5 +1,5 @@
 import torch 
-
+import numpy as np
 # RMSD between two sets of coordinates with shape (n_atoms, 3) using the Kabsch algorithm
 # Returns the RMSD and whether convergence was reached
 def rmsd(c1, c2):
@@ -29,3 +29,17 @@ def rmsd(c1, c2):
     msd = (diffs ** 2).sum() / diffs.size(1)
     
     return msd.sqrt(), True
+
+
+def get_embeddings(mol):
+    """ 
+    Recieve moleculekit object and translates its aminoacids 
+    to an embeddings list
+    """
+    AA2INT = {'ALA':1, 'GLY':2, 'PHE':3, 'TYR':4, 'ASP':5, 'GLU':6, 'TRP':7,'PRO':8,
+              'ASN':9, 'GLN':10, 'HIS':11, 'HSD':11, 'HSE':11, 'SER':12,'THR':13,
+              'VAL':14, 'MET':15, 'CYS':16, 'NLE':17, 'ARG':18,'LYS':19, 'LEU':20,
+              'ILE':21
+             }
+    emb = np.array([AA2INT[x] for x in mol.resname])
+    return emb
