@@ -132,15 +132,13 @@ if __name__ == "__main__":
     args = get_args()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
-    
-    # Precision
-    precisionmap = {'single': torch.float, 'double': torch.double}
-    precision = precisionmap[args.force_precision]
-    
+
     # Define the NN model
     gnn = LNNP(args)    
-    
-    
+    learning_rate = 1e-3
+    optim = torch.optim.Adam(gnn.model.parameters(), lr=learning_rate)
+        
+    #######################################################
     # Get the directory with the names of all the proteins
     cgdms_dir = os.path.dirname(os.path.realpath(__file__))
     dataset_dir = os.path.join(cgdms_dir, "../datasets")
@@ -159,47 +157,28 @@ if __name__ == "__main__":
     # Loading the training and validation molecules
     train_set = ProteinDataset(train_proteins, pdbs_dir, psf_dir, device=args.device)
     val_set = ProteinDataset(val_proteins, pdbs_dir, psf_dir, device=args.device)
+    #########################################################
     
-    #####                  #####
-    ##### Systems datasets #####
-    #####                  #####
-
-    
-    train_systems = SystemsDataset(args=args, protein_dataset=train_set, forcefield=args.forcefield, 
-                                   terms=args.forceterms, device=args.device, precision=precision, external=None,
-                                   cutoff=args.cutoff, rfa=args.rfa, replicas=args.replicas, switch_distance=args.switch_dist,
-                                   temperature=args.temperature
-                                   )
-    val_systems = SystemsDataset(args=args, protein_dataset=val_set, forcefield=args.forcefield, terms=args.forceterms, 
-                                 device=args.device, precision=precision, external=None, cutoff=args.cutoff,
-                                 rfa=args.rfa, replicas=args.replicas, switch_distance=args.switch_dist, temperature=args.temperature
-                                 )
- 
-    
-    n_epochs = 2
+    # Hparams
+    n_epochs = 50
     max_n_steps = args.max_steps
     steps = 250
     output_period = 1
-    
-    # Hparams
-    learning_rate = 1e-3
-    
+
+    torch.autograd.set_detect_anomaly(True)
     
     for epoch in range(1, n_epochs + 1):
         
         train_rmsds, val_rmsds = [], []
-        n_steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up n_steps over epochs
+        steps = min(250 * ((epoch // 5) + 1), max_n_steps) # Scale up steps over epochs
         train_inds = list(range(len(train_set)))
         val_inds = list(range(len(val_set)))
         shuffle(train_inds)
         shuffle(train_inds)
         
-        loss_epoch = 0
         rmsds = []
-        rmsds_mean = []
-        
         for ex, ni in enumerate(train_inds):
-            # Molecule
+ 
             mol = train_set[ni]
             mol_name = mol.viewname[:-4]
             
@@ -208,45 +187,26 @@ if __name__ == "__main__":
             embeddings = torch.tensor(embeddings).repeat(args.replicas, 1)
             external = External(gnn.model, embeddings, args.device)
             
-            # Forces and parameters
+            # Define forces and parameters
             ff = ForceField.create(mol,args.forcefield)
-            cln_parameters = Parameters(ff, mol, args.forceterms, device=args.device)
-            forces = Forces(cln_parameters, terms=args.forceterms, external=external, cutoff=args.cutoff, 
-                            rfa=args.rfa, switch_dist=args.switch_dist
+            cln_parameters = Parameters(ff, mol, terms=args.forceterms, device=args.device)
+            forces = Forces(cln_parameters, terms=args.forceterms, external=external, cutoff=None, 
+                            rfa=False, switch_dist=None
                            )
-                        
-            # System and forces
-            system = System(mol.numAtoms, nreplicas=args.replicas,precision=precision, device=args.device)
+            # System
+            system = System(mol.numAtoms, nreplicas=args.replicas,precision=torch.double, device=args.device)
             system.set_positions(mol.coords)
             system.set_box(mol.box)
             system.set_velocities(maxwell_boltzmann(forces.par.masses, T=args.temperature, replicas=args.replicas))
             
-            # Integrator
-            integrator = Integrator(system, forces, timestep = args.timestep, device = args.device,
-                                    gamma = args.langevin_gamma, T = args.langevin_temperature
-                                   )
-
-            # Native coords
+            # Integrator object
+            integrator = Integrator(system, forces, 1, args.device, gamma=0.1, T=0)
             native_coords = system.pos.clone().detach()
-
-            optim = torch.optim.Adam(forces.external.model.parameters(), lr=learning_rate)
-
-            sys_data = """
-            # Initialize system
-            system = copy.deepcopy(train_systems.systems_dataset[mol_name]['system'])
-            forces = copy.deepcopy(train_systems.systems_dataset[mol_name]['forces'])
             
-            # Define external forces
-            embeddings = get_embeddings(mol)
-            embeddings = torch.tensor(embeddings).repeat(args.replicas, 1)
-            external = External(gnn.model, embeddings, args.device)
-            
-            forces.external = external
-            """            
-                
+            # Iterator and start computing forces
             iterator = tqdm(range(1,int(steps/output_period)+1))
             Epot = forces.compute(system.pos, system.box, system.forces)
-            
+
             for i in iterator:
                 Ekin, Epot, T = integrator.step(niter=output_period)
             
@@ -256,91 +216,15 @@ if __name__ == "__main__":
                 loss, passed = rmsd(rep, native_coords[idx])
                 log_loss = loss_log = torch.log(1.0 + loss)
                 loss_sum += log_loss
-                rmsd_sum += loss
+                rmsd_sum += loss.item()
             loss_sum
-
+            rmsds.append(rmsd_sum / len(system.pos))
+            
+            print(f'Example {ex} {mol_name}, RMSD {loss.item()}')
+                
             optim.zero_grad()
-            loss_sum.backward()
+            loss_sum.backward(retain_graph=True)
             optim.step()
-            
-            print(f'Example {ex}, RMSD {loss.item()}')
-            
-            
-            
-        rmsds_mean.append(mean(rmsds))
-        print(f'Epoch {epoch}, Training loss {loss_epoch.item()}, Training mean RMSD {rmsds_mean[-1]}')
-        print(f'RMSDS list {rmsds_mean}')
-        
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    ###### Create Neural Network #####
-    #gnn = create_model(args, prior_model, mean, std)
-    
-    #numel_list = [p.numel() for p in gnn.parameters() if p.requires_grad == True]
-    #print(sum(numel_list), numel_list)
-    
-    
-    thing = """
-    precision = precisionmap[args.precision]
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    device = torch.device(args.device)
-    
-    external = None
-    if args.external is not None:
-        externalmodule = importlib.import_module(args.external["module"])
-        embeddings = torch.tensor(args.external["embeddings"]).repeat(args.replicas, 1)
-        external = externalmodule.External(args.external["file"], embeddings, device)
-    
-    learning_rate = 1e-4
-    optim = torch.optim.Adam(external.model.parameters(), lr=learning_rate)
-    
-
-    ff = ForceField.create(mol, args.forcefield)
-    cln_parameters = Parameters(ff, mol, terms=args.forceterms, device=device)
-    forces = Forces(cln_parameters, terms=args.forceterms, external=external, cutoff=args.cutoff, 
-                    rfa=args.rfa, switch_dist=args.switch_dist
-                    )
-    
-    system = System(mol.numAtoms, nreplicas=args.replicas,precision=precision, device=device)
-    system.set_positions(mol.coords)
-    system.set_box(mol.box)
-    system.set_velocities(maxwell_boltzmann(forces.par.masses, T=args.temperature, replicas=args.replicas))
-    
-    integrator = Integrator(system, forces, args.timestep, device, gamma=args.langevin_gamma, T=args.langevin_temperature)
-    wrapper = Wrapper(mol.numAtoms, mol.bonds if len(mol.bonds) else None, device)
-
-    native_coords = system.pos.clone()
-    
-    iterator = tqdm(range(1,int(args.steps/args.output_period)+1))
-    Epot = forces.compute(system.pos, system.box, system.forces)
-    
-    
-    currpos = system.pos.clone()
-    loss, passed = rmsd(native_coords[0], currpos[0])
-    
-    loss_log = torch.log(1.0 + loss)
-    loss_log.backward()
-    optim.step()
-    
-    #for i in iterator:
-         #viewFrame(mol, system.pos, system.forces)
-    #    Ekin, Epot, T = integrator.step(niter=args.output_period)
-    #    wrapper.wrap(system.pos, system.box)
-    #    currpos = system.pos.clone()
-
-    #for rep, coords in enumerate(native_coords):
-    #    print('RMSD GOOD: ', rmsd(native_coords[rep], currpos[rep]))
-    """
-        
-
-    
-    
+        print(f'Epoch {epoch}, Training loss {mean(rmsds)}')
+        rmsds.append(loss_sum.item())
