@@ -8,10 +8,11 @@ import numpy as np
 
 # Read a dataset of input files
 class ProteinDataset(Dataset):
-    def __init__(self, pdbids, pdbs_dir, psfs_dir, cg=False, device='cpu'):
+    def __init__(self, pdbids, pdbs_dir, psfs_dir, xtc_dir=None, cg=False, device='cpu'):
         self.pdbids = pdbids
         self.pdbs_dir = pdbs_dir
         self.psfs_dir = psfs_dir
+        self.xtc_dir = xtc_dir
         self.set_size = len(pdbids)
         self.device = device
         self.cg = cg
@@ -37,10 +38,17 @@ class ProteinDataset(Dataset):
         for protein in self.pdbids:
             pdb_mol = os.path.join(self.pdbs_dir, protein + '.pdb')
             mol = Molecule(pdb_mol)
+            mol_ref = mol.copy()
             
             psf_mol = os.path.join(self.psfs_dir, protein + '.psf')
             mol.read(psf_mol)
-            molecules.append(mol)
+            
+            xtc_mol = os.path.join(self.xtc_dir, protein + '.xtc') if self.xtc_dir else None
+            if xtc_mol: mol.read(xtc_mol)
+            
+            mol.align('name CA', refmol=mol_ref)
+            
+            molecules.append((mol, mol_ref))
         
         return molecules
     
