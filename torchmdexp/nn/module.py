@@ -14,6 +14,11 @@ class LNNP(LightningModule):
         self.save_hyperparameters(hparams)
         
         if self.hparams.load_model:
-            self.model = load_model(self.hparams.load_model, args=self.hparams)
+            self.model = load_model(self.hparams.load_model, device=self.hparams.device, 
+                                    derivative=self.hparams.derivative
+                                   )
+            ckpt = torch.load(self.hparams.load_model, map_location="cpu")
+            self.save_hyperparameters(ckpt["hyper_parameters"])
+            
         else:
             self.model = create_model(self.hparams, prior_model, mean, std)
