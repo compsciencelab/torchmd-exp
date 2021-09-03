@@ -4,6 +4,7 @@ import importlib
 from statistics import mean
 from moleculekit.molecule import Molecule
 from moleculekit.projections.metricrmsd import MetricRmsd
+import numpy as np
 import os
 from pytorch_lightning import LightningModule
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
@@ -31,12 +32,12 @@ from torchmdnet.models.model import create_model, load_model
 from torchmdnet.models.utils import rbf_class_mapping, act_class_mapping
 from torchmdnet.utils import LoadFromCheckpoint, save_argparse, number
 from tqdm import tqdm
-from utils import rmsd
+from torchmdexp.nn.utils import rmsd
 
 def get_args(arguments=None):
     # fmt: off
     parser = argparse.ArgumentParser(description='Training')
-    parser.add_argument('--load-model', action=LoadFromCheckpoint, help='Restart training using a model checkpoint')  # keep first
+    parser.add_argument('--load-model', default=None, help='Restart training using a model checkpoint')  # keep first
     parser.add_argument('--conf', '-c', type=open, action=LoadFromFile, help='Configuration yaml file')  # keep second
     parser.add_argument('--num-epochs', default=300, type=int, help='number of epochs')
     parser.add_argument('--batch-size', default=32, type=int, help='batch size')
@@ -98,6 +99,7 @@ def get_args(arguments=None):
     parser.add_argument('--num-heads', type=int, default=8, help='Number of attention heads')
     
     # Torchmdexp specific
+    parser.add_argument('--dataset-size',type=int,default=1,help='Increase dataset size if training in one mol')
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
     parser.add_argument('--forcefield', default="data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
     parser.add_argument('--forceterms', nargs='+', default="bonds", help='Forceterms to include, e.g. --forceterms Bonds LJ')
@@ -149,10 +151,15 @@ def load_datasets(data_dir, train_set, val_set, device = 'cpu'):
     # Structure and topology directories
     pdbs_dir = os.path.join(train_val_dir, 'pdb')
     psf_dir = os.path.join(train_val_dir, 'psf')
-
+    xtc_dir = os.path.join(train_val_dir, 'xtc') if os.path.isdir(os.path.join(train_val_dir, 'xtc')) else None
+    
     # Loading the training and validation molecules
-    train_set = ProteinDataset(train_proteins, pdbs_dir, psf_dir, device=device)
-    val_set = ProteinDataset(val_proteins, pdbs_dir, psf_dir, device=device)
+    train_set = ProteinDataset(train_proteins, pdbs_dir, psf_dir, xtc_dir = xtc_dir, device=device)
+    val_set = ProteinDataset(val_proteins, pdbs_dir, psf_dir, xtc_dir = xtc_dir, device=device)
+    
+    if len(train_set) == 1: 
+        train_set.set_size *= args.dataset_size
+        train_set.molecules *= args.dataset_size
         
     return train_set, val_set
     
@@ -204,11 +211,29 @@ def loss_fn(currpos, native_coords):
     for idx, rep in enumerate(currpos):
         pos_rmsd, passed = rmsd(rep, native_coords[idx]) # Compute rmsd for one rep
         log_rmsd = torch.log(1.0 + pos_rmsd)             # Compute loss of one rep
-        loss += log_rmsd                                 # Compute the sum of the repetition losses
-        loss /= len(currpos)                             # Compute average loss
+        loss += log_rmsd                                 # Compute the sum of the repetition losses                           
         rmsds.append(pos_rmsd.item())                    # List of rmsds
+        
+    loss /= len(currpos) # Compute average loss
     
     return loss, mean(rmsds)
+
+def get_native_coords(mol, replicas, device):
+    """
+    Return the native structure coordinates as a torch tensor and with shape (replicas, mol.numAtoms, 3)
+    """
+    pos = torch.zeros(replicas, mol.numAtoms, 3)
+    
+    atom_pos = np.transpose(mol.coords, (2, 0, 1))
+    if replicas > 1 and atom_pos.shape[0] != replicas:
+        tom_pos = np.repeat(atom_pos[0][None, :], replicas, axis=0)
+
+    pos[:] = torch.tensor(
+            atom_pos, dtype=pos.dtype, device=pos.device
+    )
+    pos = pos.type(torch.float64)
+    
+    return pos
 
 def forward(system, forces, steps, output_period, timestep, device='cpu', gamma=None, T=None):
     
@@ -216,19 +241,19 @@ def forward(system, forces, steps, output_period, timestep, device='cpu', gamma=
     Performs a simulation and returns the coordinators at time t=0 and at desired times t.
     """
     # Integrator object
-    integrator = Integrator(system, forces, timestep, args.device, gamma=0.1, T=0)
-    native_coords = system.pos.clone().detach()
+    integrator = Integrator(system, forces, timestep, device, gamma=gamma, T=T)
+    #native_coords = system.pos.clone().detach()
             
     # Iterator and start computing forces
-    iterator = tqdm(range(1,int(steps/output_period)+1))
+    iterator = range(1,int(steps/output_period)+1)
     Epot = forces.compute(system.pos, system.box, system.forces)
 
     for i in iterator:
         Ekin, Epot, T = integrator.step(niter=output_period)
     
-    return native_coords, system
+    return system
 
-def train_model(model, optimizer, scheduler , hparams, train_set, val_set, args):
+def train_model(model, optim, scheduler , hparams, train_set, val_set, args):
     """
     Trainer
     """
@@ -241,7 +266,7 @@ def train_model(model, optimizer, scheduler , hparams, train_set, val_set, args)
     learning_rate = hparams['lr']
     
     #Logger
-    logs = LogWriter(args.log_dir,keys=('epoch','train_loss','mean_rmsd','lr'))
+    logs = LogWriter(args.log_dir,keys=('epoch', 'steps', 'train_loss','mean_rmsd','lr'))
     
     for epoch in range(1, n_epochs + 1):
         
@@ -260,11 +285,13 @@ def train_model(model, optimizer, scheduler , hparams, train_set, val_set, args)
         epoch_rmsds = []
         for ex, ni in enumerate(train_inds):
  
-            mol = train_set[ni]
+            mol = train_set[ni][0]
+            mol_ref = train_set[ni][1]
+        
             mol_name = mol.viewname[:-4]
             
             # Define external forces
-            external = external_forces(model, mol, replicas = args.replicas ,device = args.device)
+            external = external_forces(model.model, mol, replicas = args.replicas ,device = args.device)
             
             # Define forces and parameters
             forces = setup_forces(mol, args.forcefield, args.forceterms, external, device=args.device, 
@@ -276,8 +303,9 @@ def train_model(model, optimizer, scheduler , hparams, train_set, val_set, args)
                                  device=args.device
                                  )
             
-            # Forward pass            
-            native_coords, system = forward(system, forces, steps, output_period, args.timestep, device=args.device,
+            # Forward pass 
+            native_coords = get_native_coords(mol_ref, args.replicas, args.device)
+            system = forward(system, forces, steps, output_period, args.timestep, device=args.device,
                                             gamma=args.langevin_gamma, T=args.langevin_temperature
                                            )
             
@@ -298,17 +326,21 @@ def train_model(model, optimizer, scheduler , hparams, train_set, val_set, args)
         print(f'Epoch {epoch}, Training loss {training_loss:.4f}, Average epoch RMSD {mean(epoch_rmsds)}')
         loss_list.append(loss.item())
         
-        if (epoch % 10) == 0:
+        if (epoch % 1) == 0:
             path = f'{args.log_dir}/epoch={epoch}-loss={training_loss:.4f}.ckpt'
+            #torch.save(model.state_dict(), path)
+            
+            # TODO: SAVE LIKE THIS
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': model.state_dict(),
+                'state_dict': model.model.state_dict(),
                 'optimizer_state_dict': optim.state_dict(),
                 'loss': training_loss,
+                'hyper_parameters': model.hparams,
                 }, path)
         
         # Write results
-        logs.write_row({'epoch':epoch,'train_loss':training_loss.item(),'mean_rmsd':mean(epoch_rmsds),
+        logs.write_row({'epoch':epoch, 'steps': steps,'train_loss':training_loss.item(),'mean_rmsd':mean(epoch_rmsds),
                         'lr':optim.param_groups[0]['lr']})
 
 
@@ -334,4 +366,4 @@ if __name__ == "__main__":
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=5, gamma=0.8)
 
     # Train the model
-    train_model(gnn.model, optim, scheduler , hparams, train_set, val_set, args)
+    train_model(gnn, optim, scheduler , hparams, train_set, val_set, args)
