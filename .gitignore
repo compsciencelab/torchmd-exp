@@ -18,3 +18,8 @@ train.yaml
 build/
 dist/
 torchmd_exp.egg-info/
+torchmdexp/nn/simulations/
+torchmdexp/nn/data/
+torchmdexp/nn/trainings/
+torchmdexp/nn/arguments/
+torchmdexp/datasets/

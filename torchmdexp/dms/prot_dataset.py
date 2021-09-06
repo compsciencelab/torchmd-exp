@@ -36,12 +36,16 @@ class ProteinDataset(Dataset):
     def __load_molecules(self):
         molecules = []
         for protein in self.pdbids:
-            pdb_mol = os.path.join(self.pdbs_dir, protein + '.pdb')
-            mol = Molecule(pdb_mol)
-            mol_ref = mol.copy()
             
             psf_mol = os.path.join(self.psfs_dir, protein + '.psf')
-            mol.read(psf_mol)
+            mol = Molecule(psf_mol)
+
+            pdb_mol = os.path.join(self.pdbs_dir, protein + '.pdb')
+            mol.read(pdb_mol)
+
+
+            mol_ref = mol.copy()
+            
             
             xtc_mol = os.path.join(self.xtc_dir, protein + '.xtc') if self.xtc_dir else None
             if xtc_mol: mol.read(xtc_mol)

@@ -20,7 +20,7 @@ def get_args(arguments=None):
     return args
 
 dms_dir = os.path.dirname(os.path.realpath(__file__))
-dataset_dir = os.path.join(dms_dir, "datasets")
+dataset_dir = os.path.join(dms_dir, "../datasets")
 train_val_dir = os.path.join(dms_dir, "protein_data", "train_val")
 pdbs_dir = "/workspace7/torchmd-AD/train_val_torchmd/pdb/"
 psfs_dir = "/workspace7/torchmd-AD/train_val_torchmd/psf"

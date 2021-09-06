@@ -2,21 +2,23 @@ activation: silu
 batch_size: 128
 cutoff_lower: 0.0
 cutoff_upper: 5.0
-data_dir: /workspace7/torchmd-AD/train_val_short
+data_dir: /workspace7/torchmd-AD/train_cln_pdb
 distributed_backend: ddp
 derivative: True
 device: cpu
 early_stopping_patience: 100
 embedding_dimension: 256
 forceterms: 
+    - bonds
     - repulsioncg 
+    - dihedrals
 inference_batch_size: 128
 lr: 1.e-3
 lr_factor: 0.8
 lr_min: 1.e-7
 lr_patience: 0.01
 lr_warmup_steps: 0
-log_dir: /shared/carles/torchmd-exp/torchmdexp/nn/trainings/cln_prelambda/
+log_dir: /shared/carles/torchmd-exp/torchmdexp/nn/trainings/cln_gnn_brd_02_09/
 max_steps: 2000
 neighbor_embedding: true
 ngpus: -1
@@ -27,13 +29,14 @@ num_nodes: 1
 num_rbf: 64
 num_workers: 4
 rbf_type: expnorm
+replicas: 10
 save_interval: 10
 seed: 1
 step_update: 5
 test_interval: 10
 test_size: 0.1
-train_set: train_short.txt
-val_set: val_short.txt
+train_set: train_cln.txt
+val_set: train_cln.txt
 trainable_rbf: True
 val_size: 0.05
 weight_decay: 0.0
