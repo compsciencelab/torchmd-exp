@@ -107,6 +107,7 @@ def get_args(arguments=None):
     parser.add_argument('--rfa', default=False, action='store_true', help='Enable reaction field approximation')
     parser.add_argument('--replicas', type=int, default=1, help='Number of different replicas to run')
     parser.add_argument('--step_update', type=int, default=5, help='Number of epochs to update the simulation steps')
+    parser.add_argument('--step_size',type=int,default=5,help='Number of epochs to reduce lr')
     parser.add_argument('--switch_dist', default=None, type=float, help='Switching distance for LJ')
     parser.add_argument('--temperature',  default=300,type=float, help='Assign velocity from initial temperature in K')
     parser.add_argument('--force-precision', default='single', type=str, help='LJ/Elec/Bond cutoff')
@@ -163,14 +164,14 @@ def load_datasets(data_dir, train_set, val_set, device = 'cpu'):
         
     return train_set, val_set
     
-def external_forces(model, mol, replicas = 1, device = 'cpu'):
+def external_forces(model, mol, replicas = 1, device = 'cpu', mode = 'val'):
     """
     Arguments: nn.model, moleculekit object, #replicas, device
     Returns: external torchmd calculator
     """
     embeddings = get_embeddings(mol)
-    embeddings = torch.tensor(embeddings).repeat(replicas, 1)
-    external = External(model, embeddings, device)
+    embeddings = torch.tensor(embeddings, device = device).repeat(replicas, 1)
+    external = External(model, embeddings, device, mode)
         
     return external
 
@@ -222,7 +223,7 @@ def get_native_coords(mol, replicas, device):
     """
     Return the native structure coordinates as a torch tensor and with shape (replicas, mol.numAtoms, 3)
     """
-    pos = torch.zeros(replicas, mol.numAtoms, 3)
+    pos = torch.zeros(replicas, mol.numAtoms, 3, device = device)
     
     atom_pos = np.transpose(mol.coords, (2, 0, 1))
     if replicas > 1 and atom_pos.shape[0] != replicas:
@@ -232,6 +233,8 @@ def get_native_coords(mol, replicas, device):
             atom_pos, dtype=pos.dtype, device=pos.device
     )
     pos = pos.type(torch.float64)
+    
+    pos.to(device)
     
     return pos
 
@@ -266,23 +269,25 @@ def train_model(model, optim, scheduler , hparams, train_set, val_set, args):
     learning_rate = hparams['lr']
     
     #Logger
-    logs = LogWriter(args.log_dir,keys=('epoch', 'steps', 'train_loss','mean_rmsd','lr'))
-    
+    logs = LogWriter(args.log_dir,keys=('epoch', 'steps', 'Train loss',
+                                        'Train rmsd', 'Val loss','Val rmsd' ,'lr'
+                                       )
+                    )
+    best_epoch = 0
     for epoch in range(1, n_epochs + 1):
         
         train_rmsds, val_rmsds = [], []
+        train_losses, val_losses = [], []
         steps = min(250 * ((epoch // step_update) + 1), max_n_steps) # Scale up steps over epochs
         train_inds = list(range(len(train_set)))
         val_inds = list(range(len(val_set)))
         shuffle(train_inds)
         shuffle(train_inds)
-        
-        if (epoch % 10) == 0:
-            learning_rate /= 2
-        
-        loss_list = []
+                
         training_loss = 0
         epoch_rmsds = []
+        
+        # Training set
         for ex, ni in enumerate(train_inds):
  
             mol = train_set[ni][0]
@@ -291,7 +296,9 @@ def train_model(model, optim, scheduler , hparams, train_set, val_set, args):
             mol_name = mol.viewname[:-4]
             
             # Define external forces
-            external = external_forces(model.model, mol, replicas = args.replicas ,device = args.device)
+            external = external_forces(model.model, mol, replicas = args.replicas ,device = args.device,
+                                       mode = 'train'
+                                      )
             
             # Define forces and parameters
             forces = setup_forces(mol, args.forcefield, args.forceterms, external, device=args.device, 
@@ -313,21 +320,62 @@ def train_model(model, optim, scheduler , hparams, train_set, val_set, args):
             loss, mean_rmsds = loss_fn(system.pos, native_coords)
             
             # Save training loss and epoch rmsds
-            training_loss += (loss)
-            epoch_rmsds.append(mean_rmsds)
-            
-            print(f'Example {ex} {mol_name}, RMSD {mean_rmsds}')
+            train_losses.append(loss.item())
+            train_rmsds.append(mean_rmsds)
+            print(f'Train Example {ex} {mol_name}, RMSD {mean_rmsds}')
                 
             optim.zero_grad()
             loss.backward()
             optim.step()
         scheduler.step()
-            
-        print(f'Epoch {epoch}, Training loss {training_loss:.4f}, Average epoch RMSD {mean(epoch_rmsds)}')
-        loss_list.append(loss.item())
         
-        if (epoch % 1) == 0:
-            path = f'{args.log_dir}/epoch={epoch}-loss={training_loss:.4f}.ckpt'
+        # Validation set
+        
+        validation_loss = 0
+        for ex, ni in enumerate(val_inds):
+ 
+            mol = val_set[ni][0]
+            mol_ref = val_set[ni][1]
+        
+            mol_name = mol.viewname[:-4]
+            
+            # Define external forces
+            external = external_forces(model.model, mol, replicas = args.replicas ,device = args.device, 
+                                      mode = 'val'
+                                      )
+            
+            # Define forces and parameters
+            forces = setup_forces(mol, args.forcefield, args.forceterms, external, device=args.device, 
+                                  cutoff=args.cutoff, rfa=args.rfa, switch_dist=args.switch_dist
+                                )
+            
+            # System
+            system = setup_system(mol, forces, replicas=args.replicas, T=args.temperature,
+                                 device=args.device
+                                 )
+            
+            # Forward pass 
+            native_coords = get_native_coords(mol_ref, args.replicas, args.device)
+            system = forward(system, forces, steps, output_period, args.timestep, device=args.device,
+                                            gamma=args.langevin_gamma, T=args.langevin_temperature
+                                           )
+            
+            # Compute loss and rmsd over replicas
+            loss, mean_rmsds = loss_fn(system.pos, native_coords)
+            
+            # Save validation loss and epoch rmsds
+            val_losses.append(loss.item())
+            val_rmsds.append(mean_rmsds)
+            print(f'Val Example {ex} {mol_name}, RMSD {mean_rmsds}')
+        
+        print(f'''Epoch {epoch}, Training loss {mean(train_losses):.4f}, Average train RMSD {mean(train_rmsds):.5f}
+                Val loss {mean(val_losses):.4f} Average val RMSD {mean(val_rmsds):.5f}'''
+             )
+        
+        norm_loss = mean(train_losses) / steps
+        if (norm_loss < best_epoch or best_epoch == 0):
+            best_epoch = norm_loss
+            path = f'{args.log_dir}/epoch={epoch}-train_loss={mean(train_losses):.4f}.ckpt'
             #torch.save(model.state_dict(), path)
             
             # TODO: SAVE LIKE THIS
@@ -340,8 +388,9 @@ def train_model(model, optim, scheduler , hparams, train_set, val_set, args):
                 }, path)
         
         # Write results
-        logs.write_row({'epoch':epoch, 'steps': steps,'train_loss':training_loss.item(),'mean_rmsd':mean(epoch_rmsds),
-                        'lr':optim.param_groups[0]['lr']})
+        logs.write_row({'epoch':epoch, 'steps': steps,'Train loss':mean(train_losses),
+                        'Train rmsd':mean(train_rmsds), 'Val loss': mean(val_losses),
+                        'Val rmsd': mean(val_rmsds) ,'lr':optim.param_groups[0]['lr']})
 
 
 if __name__ == "__main__":
@@ -356,14 +405,14 @@ if __name__ == "__main__":
     # Hparams    
     hparams = {'epochs': args.num_epochs,
               'max_steps': args.max_steps,
-              'step_update': args.step_update, 
+              'step_update': args.num_epochs / 10, 
               'output_period': 1,
               'lr': args.lr}
     
     # Define the NN model
     gnn = LNNP(args)    
     optim = torch.optim.Adam(gnn.model.parameters(), lr=hparams['lr'])
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=5, gamma=0.8)
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=args.step_size, gamma=0.8)
 
     # Train the model
     train_model(gnn, optim, scheduler , hparams, train_set, val_set, args)
