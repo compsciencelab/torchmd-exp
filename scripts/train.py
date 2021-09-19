@@ -23,8 +23,8 @@ from torchmdexp.nn.calculator import External
 from torchmdexp.nn.logger import LogWriter
 from torchmdexp.nn.module import LNNP
 from torchmdexp.nn.utils import get_embeddings
-from torchmdexp.dms.prot_dataset import ProteinDataset
-from torchmdexp.dms.systems_dataset import SystemsDataset
+from torchmdexp.pdataset import ProteinDataset
+from torchmdexp.sdataset import SystemsDataset
 from torchmdnet import datasets, priors, models
 from torchmdnet.data import DataModule
 from torchmdnet.models import output_modules
@@ -101,7 +101,7 @@ def get_args(arguments=None):
     # Torchmdexp specific
     parser.add_argument('--dataset-size',type=int,default=1,help='Increase dataset size if training in one mol')
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
-    parser.add_argument('--forcefield', default="data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
+    parser.add_argument('--forcefield', default="/shared/carles/repo/torchmd-exp/torchmdexp/nn/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
     parser.add_argument('--forceterms', nargs='+', default="bonds", help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--cutoff', default=None, type=float, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--rfa', default=False, action='store_true', help='Enable reaction field approximation')
@@ -140,7 +140,7 @@ def load_datasets(data_dir, train_set, val_set, device = 'cpu'):
     """
     # Get the directory with the names of all the proteins
     cgdms_dir = os.path.dirname(os.path.realpath(__file__))
-    dataset_dir = os.path.join(cgdms_dir, "../datasets")
+    dataset_dir = os.path.join(cgdms_dir, "../torchmdexp/datasets")
     
     # Directory where the pdb and psf data is saved
     train_val_dir = data_dir
