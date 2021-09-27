@@ -20,6 +20,7 @@ class Propagator(torch.nn.Module):
         cutoff=None,
         rfa=None,
         switch_dist=None,
+        exclusions = ("bonds", "angles", "1-4"),
         precision = torch.double
     ): 
         super(Propagator, self).__init__() 
@@ -33,6 +34,7 @@ class Propagator(torch.nn.Module):
         self.cutoff = cutoff
         self.rfa = rfa
         self.switch_dist = switch_dist
+        self.exclusions = exclusions
         self.precision = precision
                 
         self.forces = self._setup_forces()
@@ -46,7 +48,7 @@ class Propagator(torch.nn.Module):
         ff = ForceField.create(self.mol,self.forcefield)
         parameters = Parameters(ff, self.mol, terms=self.terms, device=self.device)
         forces = Forces(parameters, terms=self.terms, external=self.external, cutoff=self.cutoff, 
-                        rfa=self.rfa, switch_dist=self.switch_dist
+                        rfa=self.rfa, switch_dist=self.switch_dist, exclusions = self.exclusions
                         )
         return forces
     
@@ -83,8 +85,9 @@ class Propagator(torch.nn.Module):
         Epot = forces.compute(system.pos, system.box, system.forces)
         
         nstates = int(steps // output_period)
-
-        states = torch.zeros(nstates, self.replicas, len(system.pos[0]), 3, device = self.device, dtype = self.precision)
+        
+        states = torch.zeros(nstates, self.replicas, len(system.pos[0]), 3, device = self.device,
+                             dtype = self.precision)
         boxes = torch.zeros(nstates, self.replicas, 3, 3, device = self.device, dtype = self.precision)
 
         
