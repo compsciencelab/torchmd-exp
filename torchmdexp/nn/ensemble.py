@@ -43,11 +43,25 @@ class Ensemble:
         weights = torch.divide(exponentials, torch.sum(exponentials))
         
         return weights
-
+    
+    def _effectiven(self, weights):
+        
+        lnwi = torch.log(weights)
+        
+        neff = torch.exp(-torch.sum(torch.multiply(weights, lnwi)))
+        
+        return neff
+    
     def compute(self, model):
         
         weights = self._weights(model)
-        weights = weights[:, None, None, None]
-        ensemble = torch.sum(torch.multiply(weights, self.states), axis=0)
         
-        return ensemble
+        neff = len(weights)
+        neff_hat = self._effectiven(weights)
+        
+        if neff_hat.item() < 0.9*neff:
+            return None
+        else:
+            weights = weights[:, None, None, None]
+            ensemble = torch.sum(torch.multiply(weights, self.states), axis=0)
+            return ensemble
