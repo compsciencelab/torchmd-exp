@@ -31,7 +31,7 @@ def rmsd(c1, c2):
     return msd.sqrt(), True
 
 
-def get_embeddings(mol):
+def get_embeddings(mol, device, replicas):
     """ 
     Recieve moleculekit object and translates its aminoacids 
     to an embeddings list
@@ -42,4 +42,5 @@ def get_embeddings(mol):
               'ILE':21
              }
     emb = np.array([AA2INT[x] for x in mol.resname])
+    emb = torch.tensor(emb, device = device).repeat(replicas, 1)
     return emb

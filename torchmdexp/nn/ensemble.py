@@ -14,8 +14,7 @@ class Ensemble:
         self.device = device
         self.dtype = dtype
         
-        for param in self.ref_model.model.parameters():
-            param.requires_grad = False
+        self.ref_model.mode = 'val'
         
         self.prior_energies = self._priorEpot()
         self.U_ref = torch.add(self.prior_energies, self._extEpot(self.ref_model))
