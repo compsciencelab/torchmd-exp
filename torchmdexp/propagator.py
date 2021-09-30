@@ -16,7 +16,7 @@ class Propagator(torch.nn.Module):
         external = None,
         replicas = 1,
         device='cpu',
-        T = 300,
+        T = 350,
         cutoff=None,
         rfa=None,
         switch_dist=None,
@@ -36,8 +36,11 @@ class Propagator(torch.nn.Module):
         self.switch_dist = switch_dist
         self.exclusions = exclusions
         self.precision = precision
-                
-        self.forces = self._setup_forces()
+        
+        self.prior_forces = None
+        self.forces = None
+        self._setup_forces()
+        
         self.system = self._setup_system(self.forces)
         
     def _setup_forces(self):
@@ -47,10 +50,15 @@ class Propagator(torch.nn.Module):
         """
         ff = ForceField.create(self.mol,self.forcefield)
         parameters = Parameters(ff, self.mol, terms=self.terms, device=self.device)
-        forces = Forces(parameters, terms=self.terms, external=self.external, cutoff=self.cutoff, 
+        
+        self.prior_forces = Forces(parameters, terms=self.terms, external=None, cutoff=self.cutoff, 
                         rfa=self.rfa, switch_dist=self.switch_dist, exclusions = self.exclusions
                         )
-        return forces
+        
+        self.forces = Forces(parameters, terms=self.terms, external=self.external, cutoff=self.cutoff, 
+                        rfa=self.rfa, switch_dist=self.switch_dist, exclusions = self.exclusions
+                        )
+        #return forces
     
     def _setup_system(self, forces):
         """
@@ -64,7 +72,7 @@ class Propagator(torch.nn.Module):
 
         return system
     
-    def forward(self, steps, output_period , external, timestep=1, gamma=None):
+    def forward(self, steps, output_period, timestep=1, gamma=None):
     
         """
         Performs a simulation and returns the coordinates at desired times t.
@@ -73,9 +81,7 @@ class Propagator(torch.nn.Module):
         # Set up system and forces
         forces = copy.deepcopy(self.forces)
         system = copy.deepcopy(self.system)
-        
-        forces.external = external
-        
+                
         # Integrator object
         integrator = Integrator(system, forces, timestep, gamma=gamma, device=self.device, T=self.T)
         #native_coords = system.pos.clone().detach()
