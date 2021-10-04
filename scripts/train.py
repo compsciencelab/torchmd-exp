@@ -151,7 +151,7 @@ if __name__ == "__main__":
     
     #Logger
     logs = LogWriter(args.log_dir,keys=('epoch', 'steps', 'Train loss',
-                                        'Train rmsd' , 'Val rmsd', 'lr', 'Memory'
+                                        'Val loss', 'lr', 'Memory'
                                        )
                     )
 
@@ -201,7 +201,7 @@ if __name__ == "__main__":
         ensembles.append(ensemble)
             
     best_10_epochs = []
-    for epoch in range(hparams['epochs'] + 1):
+    for epoch in range(hparams['epochs']):
         epoch += 1
         
         # TRAIN LOOP
@@ -228,7 +228,8 @@ if __name__ == "__main__":
                 external = External(ref_gnn.model, embeddings, device = args.device, mode = 'val')
             
                 # Define the propagator and run the simulation
-                propagator = Propagator(mol, args.forcefield, args.forceterms, external=external , device = args.device, 
+                propagator = Propagator(mol, args.forcefield, args.forceterms, external=external , 
+                                        device = args.device, 
                                         T = args.temperature,cutoff = args.cutoff, rfa = args.rfa, 
                                         switch_dist = args.switch_dist, exclusions = args.exclusions
                                         )
@@ -279,20 +280,22 @@ if __name__ == "__main__":
             
         
         # Write results
-        val_rmsd = mean(val_rmsds) if len(val_rmsds) else mean(train_rmsds)
+        val_loss = mean(val_rmsds) if len(val_rmsds) else mean(train_losses)
         
-        logs.write_row({'epoch':epoch, 'steps': steps,'Train loss': mean(train_losses),
-                        'Train rmsd': mean(train_rmsds), 'Val rmsd': val_rmsd,
+        logs.write_row({'epoch':epoch, 'steps': steps,'Train loss': mean(train_losses), 'Val loss': val_loss,
                         'lr':optim.param_groups[0]['lr'], 'Memory': memory}
                        )
             
         # TODO: SAVE LIKE THIS
-        if len(best_10_epochs) < 10 or val_rmsd < best_10_epochs[-1]:
-            
-            best_10_epochs.append(val_rmsd)
+        if len(best_10_epochs) < 10:
+            best_10_epochs.append(val_loss)
             best_10_epochs.sort()
             
-            path = f'{args.log_dir}/epoch={epoch}-train_loss={mean(train_losses):.4f}-val_rmsd={val_rmsd:.4f}.ckpt'
+        elif val_loss < best_10_epochs[-1]:
+            best_10_epochs[-1] = val_loss
+            best_10_epochs.sort()
+            
+            path = f'{args.log_dir}/epoch={epoch}-train_loss={mean(train_losses):.4f}-val_loss={val_loss:.4f}.ckpt'
             torch.save({
                 'epoch': epoch,
                 'state_dict': ref_gnn.model.state_dict(),
