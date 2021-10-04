@@ -25,3 +25,4 @@ torchmdexp/nn/arguments/
 torchmdexp/datasets/
 scripts/trainings
 scripts/simulations
+torchmdexp/nn/ntbs/1D_TICA_plots.ipynb
