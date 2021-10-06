@@ -120,6 +120,8 @@ def get_args(arguments=None):
     parser.add_argument('--langevin_gamma',  default=0.1,type=float, help='Langevin relaxation ps^-1')
     parser.add_argument('--langevin_temperature',  default=350,type=float, help='Temperature in K of the thermostat')
     parser.add_argument('--max_steps',type=int,default=2000,help='Total number of simulation steps')
+    parser.add_argument('--neff',type=int,default=0.9,help='Neff threshold')
+
     
     # other args
     parser.add_argument('--derivative', default=True, type=bool, help='If true, take the derivative of the prediction w.r.t coordinates')
@@ -172,6 +174,7 @@ if __name__ == "__main__":
     # Define the NN model
     gnn = LNNP(args)    
     optim = torch.optim.Adam(gnn.model.parameters(), lr=hparams['lr'])
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=args.step_size, gamma=0.8)
     
     # Create the first reference simulations
     
@@ -200,13 +203,13 @@ if __name__ == "__main__":
                             )
         ensembles.append(ensemble)
             
-    best_10_epochs = []
+    best_5_epochs = []
     for epoch in range(hparams['epochs']):
         epoch += 1
-        
+
         # TRAIN LOOP
         train_losses = []
-        train_rmsds = []
+        reference_losses = []
         for ex, ni in enumerate(train_inds):
             
             # Molecule
@@ -217,8 +220,9 @@ if __name__ == "__main__":
             # Create the ENSEMBLE
             ensemble = ensembles[ni]
 
-            weighted_ensemble = ensemble.compute(gnn)
+            weighted_ensemble = ensemble.compute(gnn, args.neff)
             
+            reference = False
             # Check if Neff threshold is surpassed
             if weighted_ensemble is None:
                     
@@ -239,8 +243,9 @@ if __name__ == "__main__":
                                     args.device, torch.float
                                    )
                 ensembles[ni] = ensemble
-                weighted_ensemble = ensemble.compute(gnn)
-
+                weighted_ensemble = ensemble.compute(gnn, args.neff)
+                reference = True
+                
             # Compute rmsd of last coord of the reference simulation
             ref_rmsd, _ = rmsd(native_coords, ensemble.states[-1])
                                  
@@ -252,7 +257,12 @@ if __name__ == "__main__":
             optim.step()
             
             train_losses.append(loss.item())
-            train_rmsds.append(ref_rmsd.item())
+        
+        scheduler.step()
+        if reference == True:
+            for state in ensemble.states:
+                ref_rmsd, _ = rmsd(native_coords, state)
+                reference_losses.append(ref_rmsd.item())
         
         val_rmsds = []
         for ex, ni in enumerate(val_inds):
@@ -280,20 +290,25 @@ if __name__ == "__main__":
             
         
         # Write results
-        val_loss = mean(val_rmsds) if len(val_rmsds) else mean(train_losses)
+        if len(val_rmsds):
+            val_loss = mean(val_rmsds)
+        elif len(reference_losses):
+            val_loss = mean(reference_losses)
+        else:
+            val_loss = None
         
         logs.write_row({'epoch':epoch, 'steps': steps,'Train loss': mean(train_losses), 'Val loss': val_loss,
                         'lr':optim.param_groups[0]['lr'], 'Memory': memory}
                        )
             
         # TODO: SAVE LIKE THIS
-        if len(best_10_epochs) < 10:
-            best_10_epochs.append(val_loss)
-            best_10_epochs.sort()
+        if len(best_5_epochs) < 5 and val_loss:
+            best_5_epochs.append(val_loss)
+            best_5_epochs.sort()
             
-        elif val_loss < best_10_epochs[-1]:
-            best_10_epochs[-1] = val_loss
-            best_10_epochs.sort()
+        elif val_loss and val_loss < best_5_epochs[-1]:
+            best_5_epochs[-1] = val_loss
+            best_5_epochs.sort()
             
             path = f'{args.log_dir}/epoch={epoch}-train_loss={mean(train_losses):.4f}-val_loss={val_loss:.4f}.ckpt'
             torch.save({
@@ -303,3 +318,4 @@ if __name__ == "__main__":
                 'loss': loss.item(),
                 'hyper_parameters': gnn.hparams,
                 }, path)
+        
