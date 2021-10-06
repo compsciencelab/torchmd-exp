@@ -60,14 +60,14 @@ class Ensemble:
         
         return neff
     
-    def compute(self, model):
+    def compute(self, model, neff_threshold):
         
         weights = self._weights(model)
         
-        neff = len(weights)
+        n = len(weights)
         neff_hat = self._effectiven(weights)
                 
-        if neff_hat.item() < 0.2*neff:
+        if neff_hat.item() < neff_threshold*n:
             return None
         else:
             weights = weights[:, None, None, None]
