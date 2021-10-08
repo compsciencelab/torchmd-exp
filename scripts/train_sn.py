@@ -162,8 +162,8 @@ if __name__ == "__main__":
               'lr': args.lr}
     
     # Reference trajectory  
-    steps = 2000
-    output_period = 25
+    steps = hparams['max_steps']
+    output_period = steps // 80
 
     # Define the NN model
     gnn = LNNP(args)    
@@ -255,7 +255,7 @@ if __name__ == "__main__":
             
             train_losses.append(loss.item())
         
-        scheduler.step()
+        #scheduler.step()
         if reference == True:
             for state in ensemble.states:
                 ref_rmsd, _ = rmsd(native_coords, state)
