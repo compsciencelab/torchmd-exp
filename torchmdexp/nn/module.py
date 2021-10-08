@@ -24,7 +24,7 @@ class LNNP(LightningModule):
             
         else:
             self.model = create_model(self.hparams, prior_model, mean, std)
-    
+            self.model.to(self.hparams.device)
     
     def configure_optimizers(self):
         optimizer = AdamW(
