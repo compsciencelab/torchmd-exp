@@ -163,7 +163,7 @@ if __name__ == "__main__":
     
     # Reference trajectory  
     steps = hparams['max_steps']
-    output_period = steps // 80
+    output_period = 25
 
     # Define the NN model
     gnn = LNNP(args)    
