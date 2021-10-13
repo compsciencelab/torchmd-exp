@@ -42,16 +42,15 @@ class ProteinDataset(Dataset):
 
             mol_ref = mol.copy()
             
-            
             xtc_mol = os.path.join(self.xtc_dir, protein + '.xtc') if self.xtc_dir else None
-            if xtc_mol: mol.read(xtc_mol)
+            if xtc_mol: mol = Molecule(xtc_mol)
+            
+            psf_mol = os.path.join(self.psfs_dir, protein + '.psf')
+            mol.read(psf_mol)
             
             mol_ref.filter('name CA')
             mol.filter('name CA')
             mol.align('name CA', refmol=mol_ref)
-            
-            psf_mol = os.path.join(self.psfs_dir, protein + '.psf')
-            mol.read(psf_mol)
             
             molecules.append((mol, mol_ref))
         
