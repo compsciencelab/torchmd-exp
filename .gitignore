@@ -2,6 +2,7 @@ notebooks/training.ipynb
 notebooks/TrainParams.ipynb
 notebooks/plot_rmsds.ipynb
 notebooks/
+torchmdexp/nn/ntbs/
 greener.py
 rmsd.py
 .ipynb_checkpoints
