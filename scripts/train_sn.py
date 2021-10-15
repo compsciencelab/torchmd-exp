@@ -187,11 +187,11 @@ if __name__ == "__main__":
             
         # Define the propagator and run the simulation
         propagator = Propagator(mol, args.forcefield, args.forceterms, external=external , device = args.device, 
-                                T = args.temperature,cutoff = args.cutoff, rfa = args.rfa, 
+                                replicas = args.replicas, T = args.temperature,cutoff = args.cutoff, rfa = args.rfa, 
                                 switch_dist = args.switch_dist, exclusions = args.exclusions
                                 )
         states, boxes = propagator.forward(steps, output_period, gamma = args.langevin_gamma)
-        
+
         ensemble = Ensemble(propagator.prior_forces, ref_gnn, states, boxes, embeddings, 
                             args.temperature, args.device, torch.float
                             )
@@ -214,6 +214,7 @@ if __name__ == "__main__":
             # Create the ENSEMBLE
             ensemble = ensembles[ni]
 
+            
             weighted_ensemble = ensemble.compute(gnn, args.neff)
             
             reference = False
@@ -221,7 +222,7 @@ if __name__ == "__main__":
             if weighted_ensemble is None:
                 
                 # Set last state as the new starting coordinates
-                mol.coords = np.array(ensembles[ni].states[-1].cpu(), dtype = 'float32').reshape(mol.numAtoms, 3, args.replicas)
+                #mol.coords = np.array(ensembles[ni].states[-1].cpu(), dtype = 'float32').reshape(mol.numAtoms, 3, args.replicas)
                 
                 # Create the External force. With the current reference NN parameters 
                 ref_gnn = copy.deepcopy(gnn)
@@ -230,10 +231,14 @@ if __name__ == "__main__":
             
                 # Define the propagator and run the simulation
                 propagator = Propagator(mol, args.forcefield, args.forceterms, external=external , 
-                                        device = args.device, 
+                                        device = args.device, replicas = args.replicas, 
                                         T = args.temperature,cutoff = args.cutoff, rfa = args.rfa, 
                                         switch_dist = args.switch_dist, exclusions = args.exclusions
                                         )
+                # Set last state as the new starting coordinates
+                for idx, states in enumerate(ensemble.states):
+                    propagator.system.pos[idx] = states[-1]
+                
                 states, boxes = propagator.forward(steps, output_period, gamma = args.langevin_gamma)
 
                 ensemble = Ensemble(propagator.prior_forces, ref_gnn, states, boxes, embeddings, args.temperature, 
@@ -244,11 +249,14 @@ if __name__ == "__main__":
                 reference = True
                 
             # Compute rmsd of last coord of the reference simulation
-            ref_rmsd, _ = rmsd(native_coords, ensemble.states[-1])
-                                 
-            pos_rmsd, _ = rmsd(native_coords, weighted_ensemble)
-            loss = torch.log(1.0 + pos_rmsd)
-                        
+            #ref_rmsd, _ = rmsd(native_coords, ensemble.states[-1])
+            
+            loss = 0
+            for idx, ens in enumerate(weighted_ensemble):
+                pos_rmsd, _ = rmsd(native_coords[idx], ens)
+                loss += torch.log(1.0 + pos_rmsd)
+            
+            loss /= len(weighted_ensemble)
             optim.zero_grad()
             loss.backward()
             optim.step()
@@ -257,9 +265,13 @@ if __name__ == "__main__":
         
         #scheduler.step()
         if reference == True:
-            for state in ensemble.states:
-                ref_rmsd, _ = rmsd(native_coords, state)
-                reference_losses.append(ref_rmsd.item())
+            for idx, states in enumerate(ensemble.states):
+                traj_losses = []
+                for state in states:
+                    ref_rmsd, _ = rmsd(native_coords[idx], state)
+                    traj_losses.append(ref_rmsd.item())
+                reference_losses.append(mean(traj_losses))
+                
         
         val_rmsds = []
         for ex, ni in enumerate(val_inds):

@@ -38,19 +38,26 @@ class ProteinDataset(Dataset):
         for protein in self.pdbids:
             
             pdb_mol = os.path.join(self.pdbs_dir, protein + '.pdb')
-            mol = Molecule(pdb_mol)
-
-            mol_ref = mol.copy()
-            
-            xtc_mol = os.path.join(self.xtc_dir, protein + '.xtc') if self.xtc_dir else None
-            if xtc_mol: mol = Molecule(xtc_mol)
-            
             psf_mol = os.path.join(self.psfs_dir, protein + '.psf')
-            mol.read(psf_mol)
+            
+            mol = Molecule(pdb_mol)
+            mol_ref = mol.copy()
             
             mol_ref.filter('name CA')
             mol.filter('name CA')
+            
+            xtc_mol = os.path.join(self.xtc_dir, protein + '.xtc') if self.xtc_dir else None
+            if xtc_mol: 
+                mol = Molecule(xtc_mol)
+                mol.read(psf_mol)
+            else:
+                
+                mol.read(psf_mol)
+            
+            
+            
             mol.align('name CA', refmol=mol_ref)
+            mol.box = np.zeros(shape=(3,1))                
             
             molecules.append((mol, mol_ref))
         
