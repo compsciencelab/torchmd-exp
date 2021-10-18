@@ -92,14 +92,14 @@ class Propagator(torch.nn.Module):
         
         nstates = int(steps // output_period)
         
-        states = torch.zeros(self.replicas, nstates, len(system.pos[0]), 3, device = self.device,
+        states = torch.zeros(self.replicas, nstates, len(system.pos[0]), 3, device = "cpu",
                              dtype = self.precision)
-        boxes = torch.zeros(self.replicas, nstates, 3, 3, device = self.device, dtype = self.precision)
+        boxes = torch.zeros(self.replicas, nstates, 3, 3, device = "cpu", dtype = self.precision)
         
         for i in iterator:
             Ekin, Epot, T = integrator.step(niter=output_period)
-            states[:, i-1] = system.pos
-            boxes[:, i-1] = system.box
+            states[:, i-1] = system.pos.to("cpu")
+            boxes[:, i-1] = system.box.to("cpu")
         
         
         return states, boxes
