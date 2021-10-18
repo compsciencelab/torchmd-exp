@@ -7,9 +7,9 @@ class Ensemble:
     def __init__(self, prior_forces, model, states, boxes, embeddings, T, device, dtype):
         self.prior_forces = prior_forces
         self.model = model
-        self.states = states
-        self.boxes = boxes
-        self.iforces = torch.zeros_like(states)
+        self.states = states.to(device)
+        self.boxes = boxes.to(device)
+        self.iforces = torch.zeros_like(self.states)
         
         self.embeddings = embeddings.reshape(-1).to(device) 
         self.batch = torch.arange(embeddings.size(0), device=device).repeat_interleave(
