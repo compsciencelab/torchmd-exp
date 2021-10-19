@@ -194,20 +194,17 @@ if __name__ == "__main__":
             # Check if a reference sim has been run. If so, compute the weighted ensemble.
             ensemble = ensembles[ni]
             if ensemble is not None:
-                weighted_ensemble = ensemble.compute(gnn, args.neff)
+                mol.coords = np.array(ensemble.states[:, -1].cpu(), dtype = 'float32').reshape(mol.numAtoms, 3, args.replicas) # Set last state as 
+                weighted_ensemble = ensemble.compute(gnn, args.neff)                                                        # the new starting coordinates    
             else:
                 weighted_ensemble = None
             
             # Check if Neff threshold is surpassed
             reference = False
             if weighted_ensemble is None:
-                
-                # Set last state as the new starting coordinates
-                #mol.coords = np.array(ensembles[ni].states[-1].cpu(), dtype = 'float32').reshape(mol.numAtoms, 3, args.replicas)
-                
+                                
                 # Create the External force. With the current reference NN parameters 
                 ref_gnn = copy.deepcopy(gnn).to("cpu")
-                
                 embeddings = get_embeddings(mol, args.device, args.replicas)
                 external = External(gnn.model, embeddings, device = args.device, mode = 'val')
             
@@ -217,17 +214,13 @@ if __name__ == "__main__":
                                         T = args.temperature,cutoff = args.cutoff, rfa = args.rfa, 
                                         switch_dist = args.switch_dist, exclusions = args.exclusions
                                         )
-                
+                # Run simulation
                 states, boxes = propagator.forward(steps, output_period, gamma = args.langevin_gamma)
                 
+                # Define the ensemble of states and compute weighted ensemble
                 ensemble = Ensemble(propagator.prior_forces, gnn, states, boxes, embeddings, args.temperature, 
                                     args.device, torch.float
                                    )
-                
-                # Set last state as the new starting coordinates
-                for idx, states in enumerate(ensemble.states):
-                    propagator.system.pos[idx] = states[-1]
-
                 ensembles[ni] = ensemble
                 weighted_ensemble = ensemble.compute(gnn, args.neff)
                 reference = True                
@@ -236,12 +229,11 @@ if __name__ == "__main__":
             for idx, ens in enumerate(weighted_ensemble):
                 pos_rmsd, _ = rmsd(native_coords[idx], ens)
                 loss += torch.log(1.0 + pos_rmsd)
-            
-            loss /= len(weighted_ensemble)
+                
             optim.zero_grad()
             loss.backward()
             optim.step()
-            
+    
             train_losses.append(loss.item())
         
         #scheduler.step()
@@ -252,8 +244,8 @@ if __name__ == "__main__":
                     ref_rmsd, _ = rmsd(native_coords[idx], state)
                     traj_losses.append(ref_rmsd.item())
                 reference_losses.append(mean(traj_losses))
-                
         
+        # VALIDATION
         val_rmsds = []
         for ex, ni in enumerate(val_inds):
             mol = val_set[ni][0]
