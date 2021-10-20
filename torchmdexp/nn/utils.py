@@ -19,7 +19,7 @@ def rmsd(c1, c2):
     try:
         U, S, V = torch.svd(cov)
     except RuntimeError:
-        report("  SVD failed to converge", 0)
+        print("  SVD failed to converge")
         return torch.tensor([20.0], device=device), False
     d = torch.tensor([
             [1.0, 0.0, 0.0],

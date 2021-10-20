@@ -144,16 +144,10 @@ if __name__ == "__main__":
     args = get_args()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
-    
-    # MEMORY 
-    nvmlInit()
-    handle = nvmlDeviceGetHandleByIndex(1)
-    info = nvmlDeviceGetMemoryInfo(handle)
-    initial_memory = info.used / 1073741824
-    
+        
     #Logger
     logs = LogWriter(args.log_dir,keys=('epoch', 'steps', 'Train loss',
-                                        'Val loss', 'lr', 'Memory'
+                                        'Val loss', 'lr'
                                        )
                     )
 
@@ -169,7 +163,7 @@ if __name__ == "__main__":
     
     # Reference trajectory  
     steps = hparams['max_steps']
-    output_period = steps // 80
+    output_period = 25
 
     # Define the NN model
     gnn = LNNP(args)    
@@ -204,19 +198,24 @@ if __name__ == "__main__":
         ensembles.append(ensemble)
             
     best_5_epochs = []
+    trajs = []
+    passed = True
     for epoch in range(hparams['epochs']):
         epoch += 1
-
+        
+        
+        
         # TRAIN LOOP
         train_losses = []
         reference_losses = []
         for ex, ni in enumerate(train_inds):
-            
+             
             # Molecule
             mol = train_set[ni][0]
             mol_ref = train_set[ni][1]
             native_coords = get_native_coords(mol_ref, args.replicas, args.device)   
-
+            start_coords = states[0][-1]
+            
             # Create the ENSEMBLE
             ensemble = ensembles[ni]
 
@@ -224,8 +223,17 @@ if __name__ == "__main__":
             
             reference = False
             # Check if Neff threshold is surpassed
-            if weighted_ensemble is None:
-                    
+            if weighted_ensemble is None or passed == False:
+                
+                # Save traj
+                traj = [state.detach().cpu().numpy().copy() for state in states[0]]
+                trajs.extend(traj)
+                np.save(os.path.join(args.log_dir, f"output"), np.stack(trajs, axis=2))
+                
+                # Set last state as the new starting coordinates
+                mol.coords = np.array(start_coords.cpu(), dtype = 'float32').reshape(mol.numAtoms, 3, args.replicas)
+                
+                
                 # Create the External force. With the current reference NN parameters 
                 ref_gnn = copy.deepcopy(gnn)
                 embeddings = get_embeddings(mol, args.device, args.replicas)
@@ -247,20 +255,26 @@ if __name__ == "__main__":
                 reference = True
                 
             # Compute rmsd of last coord of the reference simulation
-            ref_rmsd, _ = rmsd(native_coords, ensemble.states[-1])
-                                 
-            pos_rmsd, _ = rmsd(native_coords, weighted_ensemble)
-            loss = torch.log(1.0 + pos_rmsd)
-                        
-            optim.zero_grad()
-            loss.backward()
-            optim.step()
+            ref_rmsd, _ = rmsd(native_coords, ensemble.states[0][-1])
+                             
+            pos_rmsd, passed = rmsd(native_coords, weighted_ensemble)
             
-            train_losses.append(loss.item())
-        
+            if passed:
+                
+                loss = torch.log(1.0 + pos_rmsd)
+
+                optim.zero_grad()
+                loss.backward()
+                optim.step()
+            
+                train_losses.append(loss.item())
+            else:
+                train_losses.append(0.0)
+                states[0][-1] = start_coords
+                
         #scheduler.step()
         if reference == True:
-            for state in ensemble.states:
+            for state in ensemble.states[0]:
                 ref_rmsd, _ = rmsd(native_coords, state)
                 reference_losses.append(ref_rmsd.item())
         
@@ -282,12 +296,7 @@ if __name__ == "__main__":
             states, boxes = propagator.forward(steps, steps, gamma = args.langevin_gamma)
             val_rmsd, _ = rmsd(native_coords, states[-1])
             val_rmsds.append(val_rmsd.item())
-        
-        nvmlInit()
-        handle = nvmlDeviceGetHandleByIndex(1)
-        info = nvmlDeviceGetMemoryInfo(handle)
-        memory =  info.used / 1073741824 - initial_memory
-            
+                    
         
         # Write results
         if len(val_rmsds):
@@ -298,7 +307,7 @@ if __name__ == "__main__":
             val_loss = None
         
         logs.write_row({'epoch':epoch, 'steps': steps,'Train loss': mean(train_losses), 'Val loss': val_loss,
-                        'lr':optim.param_groups[0]['lr'], 'Memory': memory}
+                        'lr':optim.param_groups[0]['lr']}
                        )
             
         # TODO: SAVE LIKE THIS
@@ -310,12 +319,12 @@ if __name__ == "__main__":
             best_5_epochs[-1] = val_loss
             best_5_epochs.sort()
             
-            path = f'{args.log_dir}/epoch={epoch}-train_loss={mean(train_losses):.4f}-val_loss={val_loss:.4f}.ckpt'
-            torch.save({
-                'epoch': epoch,
-                'state_dict': ref_gnn.model.state_dict(),
-                'optimizer_state_dict': optim.state_dict(),
-                'loss': loss.item(),
-                'hyper_parameters': gnn.hparams,
-                }, path)
+            #path = f'{args.log_dir}/epoch={epoch}-train_loss={mean(train_losses):.4f}-val_loss={val_loss:.4f}.ckpt'
+            #torch.save({
+            #    'epoch': epoch,
+            #    'state_dict': ref_gnn.model.state_dict(),
+            #    'optimizer_state_dict': optim.state_dict(),
+            #    'loss': loss.item(),
+            #    'hyper_parameters': gnn.hparams,
+            #    }, path)
         
