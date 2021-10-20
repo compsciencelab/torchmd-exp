@@ -72,7 +72,7 @@ class Propagator(torch.nn.Module):
 
         return system
     
-    def forward(self, steps, output_period, timestep=1, gamma=None):
+    def forward(self, steps, output_period, iforces = None, timestep=1, gamma=None):
     
         """
         Performs a simulation and returns the coordinates at desired times t.
@@ -81,7 +81,7 @@ class Propagator(torch.nn.Module):
         # Set up system and forces
         forces = copy.deepcopy(self.forces)
         system = copy.deepcopy(self.system)
-                
+        
         # Integrator object
         integrator = Integrator(system, forces, timestep, gamma=gamma, device=self.device, T=self.T)
         #native_coords = system.pos.clone().detach()
@@ -92,14 +92,14 @@ class Propagator(torch.nn.Module):
         
         nstates = int(steps // output_period)
         
-        states = torch.zeros(nstates, self.replicas, len(system.pos[0]), 3, device = self.device,
+        states = torch.zeros(self.replicas, nstates, len(system.pos[0]), 3, device = "cpu",
                              dtype = self.precision)
-        boxes = torch.zeros(nstates, self.replicas, 3, 3, device = self.device, dtype = self.precision)
-
-        
+        boxes = torch.zeros(self.replicas, nstates, 3, 3, device = "cpu", dtype = self.precision)
+                
         for i in iterator:
             Ekin, Epot, T = integrator.step(niter=output_period)
-            states[i-1] = system.pos
-            boxes[i-1] = system.box
-            
+            states[:, i-1] = system.pos.to("cpu")
+            boxes[:, i-1] = system.box.to("cpu")
+        
+        
         return states, boxes

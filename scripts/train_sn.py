@@ -144,16 +144,10 @@ if __name__ == "__main__":
     args = get_args()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
-    
-    # MEMORY 
-    nvmlInit()
-    handle = nvmlDeviceGetHandleByIndex(1)
-    info = nvmlDeviceGetMemoryInfo(handle)
-    initial_memory = info.used / 1073741824
-    
+        
     #Logger
     logs = LogWriter(args.log_dir,keys=('epoch', 'steps', 'Train loss',
-                                        'Val loss', 'lr', 'Memory'
+                                        'Val loss', 'lr'
                                        )
                     )
 
@@ -167,49 +161,29 @@ if __name__ == "__main__":
               'output_period': 1,
               'lr': args.lr}
     
-    # Reference trajectory  
-    steps = hparams['max_steps']
-    output_period = steps // 80
 
     # Define the NN model
     gnn = LNNP(args)    
     optim = torch.optim.Adam(gnn.model.parameters(), lr=hparams['lr'])
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=args.step_size, gamma=0.8)
     
-    # Create the first reference simulations
     
-    ensembles = []
+    # Start some variables and hparams
+    
+    steps = hparams['max_steps']
+    output_period = 25
     train_inds = list(range(len(train_set)))
     val_inds = list(range(len(val_set))) if val_set is not None else []
+    ensembles = [None] * len(train_set) # List of ensembles
+    best_10_epochs = []
     
-    ref_gnn = copy.deepcopy(gnn)
-    for ex, ni in enumerate(train_inds):
-        mol = train_set[ni][0]
-        mol_ref = train_set[ni][1]
-        
-        # Create the External force. With the current reference NN parameters 
-        embeddings = get_embeddings(mol, args.device, args.replicas)
-        external = External(ref_gnn.model, embeddings, device = args.device, mode = 'val')
-            
-        # Define the propagator and run the simulation
-        propagator = Propagator(mol, args.forcefield, args.forceterms, external=external , device = args.device, 
-                                T = args.temperature,cutoff = args.cutoff, rfa = args.rfa, 
-                                switch_dist = args.switch_dist, exclusions = args.exclusions
-                                )
-        states, boxes = propagator.forward(steps, output_period, gamma = args.langevin_gamma)
-        
-        ensemble = Ensemble(propagator.prior_forces, ref_gnn, states, boxes, embeddings, 
-                            args.temperature, args.device, torch.float
-                            )
-        ensembles.append(ensemble)
-            
-    best_5_epochs = []
     for epoch in range(hparams['epochs']):
         epoch += 1
 
         # TRAIN LOOP
         train_losses = []
         reference_losses = []
+        
         for ex, ni in enumerate(train_inds):
             
             # Molecule
@@ -217,53 +191,61 @@ if __name__ == "__main__":
             mol_ref = train_set[ni][1]
             native_coords = get_native_coords(mol_ref, args.replicas, args.device)   
 
-            # Create the ENSEMBLE
+            # Check if a reference sim has been run. If so, compute the weighted ensemble.
             ensemble = ensembles[ni]
-
-            weighted_ensemble = ensemble.compute(gnn, args.neff)
+            if ensemble is not None:
+                mol.coords = np.array(ensemble.states[:, -1].cpu(), dtype = 'float32').reshape(mol.numAtoms, 3, args.replicas) # Set last state as 
+                weighted_ensemble = ensemble.compute(gnn, args.neff)                                                        # the new starting coordinates    
+            else:
+                weighted_ensemble = None
             
-            reference = False
             # Check if Neff threshold is surpassed
+            reference = False
             if weighted_ensemble is None:
-                    
+                                
                 # Create the External force. With the current reference NN parameters 
-                ref_gnn = copy.deepcopy(gnn)
+                ref_gnn = copy.deepcopy(gnn).to("cpu")
                 embeddings = get_embeddings(mol, args.device, args.replicas)
-                external = External(ref_gnn.model, embeddings, device = args.device, mode = 'val')
+                external = External(gnn.model, embeddings, device = args.device, mode = 'val')
             
                 # Define the propagator and run the simulation
                 propagator = Propagator(mol, args.forcefield, args.forceterms, external=external , 
-                                        device = args.device, 
+                                        device = args.device, replicas = args.replicas, 
                                         T = args.temperature,cutoff = args.cutoff, rfa = args.rfa, 
                                         switch_dist = args.switch_dist, exclusions = args.exclusions
                                         )
+                # Run simulation
                 states, boxes = propagator.forward(steps, output_period, gamma = args.langevin_gamma)
-
-                ensemble = Ensemble(propagator.prior_forces, ref_gnn, states, boxes, embeddings, args.temperature, 
+                
+                # Define the ensemble of states and compute weighted ensemble
+                ensemble = Ensemble(propagator.prior_forces, gnn, states, boxes, embeddings, args.temperature, 
                                     args.device, torch.float
                                    )
                 ensembles[ni] = ensemble
                 weighted_ensemble = ensemble.compute(gnn, args.neff)
-                reference = True
+                reference = True                
+                            
+            loss = 0
+            for idx, ens in enumerate(weighted_ensemble):
+                pos_rmsd, _ = rmsd(native_coords[idx], ens)
+                loss += torch.log(1.0 + pos_rmsd)
                 
-            # Compute rmsd of last coord of the reference simulation
-            ref_rmsd, _ = rmsd(native_coords, ensemble.states[-1])
-                                 
-            pos_rmsd, _ = rmsd(native_coords, weighted_ensemble)
-            loss = torch.log(1.0 + pos_rmsd)
-                        
             optim.zero_grad()
             loss.backward()
             optim.step()
-            
+    
             train_losses.append(loss.item())
         
         #scheduler.step()
         if reference == True:
-            for state in ensemble.states:
-                ref_rmsd, _ = rmsd(native_coords, state)
-                reference_losses.append(ref_rmsd.item())
+            for idx, states in enumerate(ensemble.states):
+                traj_losses = []
+                for state in states:
+                    ref_rmsd, _ = rmsd(native_coords[idx], state)
+                    traj_losses.append(ref_rmsd.item())
+                reference_losses.append(mean(traj_losses))
         
+        # VALIDATION
         val_rmsds = []
         for ex, ni in enumerate(val_inds):
             mol = val_set[ni][0]
@@ -282,12 +264,7 @@ if __name__ == "__main__":
             states, boxes = propagator.forward(steps, steps, gamma = args.langevin_gamma)
             val_rmsd, _ = rmsd(native_coords, states[-1])
             val_rmsds.append(val_rmsd.item())
-        
-        nvmlInit()
-        handle = nvmlDeviceGetHandleByIndex(1)
-        info = nvmlDeviceGetMemoryInfo(handle)
-        memory =  info.used / 1073741824 - initial_memory
-            
+                    
         
         # Write results
         if len(val_rmsds):
@@ -298,17 +275,17 @@ if __name__ == "__main__":
             val_loss = None
         
         logs.write_row({'epoch':epoch, 'steps': steps,'Train loss': mean(train_losses), 'Val loss': val_loss,
-                        'lr':optim.param_groups[0]['lr'], 'Memory': memory}
+                        'lr':optim.param_groups[0]['lr']}
                        )
             
         # TODO: SAVE LIKE THIS
-        if len(best_5_epochs) < 5 and val_loss:
-            best_5_epochs.append(val_loss)
-            best_5_epochs.sort()
+        if len(best_10_epochs) < 10 and val_loss:
+            best_10_epochs.append(val_loss)
+            best_10_epochs.sort()
             
-        elif val_loss and val_loss < best_5_epochs[-1]:
-            best_5_epochs[-1] = val_loss
-            best_5_epochs.sort()
+        elif val_loss and val_loss < best_10_epochs[-1]:
+            best_10_epochs[-1] = val_loss
+            best_10_epochs.sort()
             
             path = f'{args.log_dir}/epoch={epoch}-train_loss={mean(train_losses):.4f}-val_loss={val_loss:.4f}.ckpt'
             torch.save({

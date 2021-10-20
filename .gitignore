@@ -3,6 +3,11 @@ notebooks/TrainParams.ipynb
 notebooks/plot_rmsds.ipynb
 notebooks/
 ntbs/
+<<<<<<< HEAD
+=======
+datasets/
+torchmdexp/nn/ntbs/
+>>>>>>> 4e8d604a59f0d84aca571e0b3121c72500d16301
 greener.py
 rmsd.py
 .ipynb_checkpoints
@@ -26,3 +31,5 @@ torchmdexp/nn/arguments/
 torchmdexp/datasets/
 scripts/trainings
 scripts/simulations
+torchmdexp/nn/ntbs/1D_TICA_plots.ipynb
+.nfs*
