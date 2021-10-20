@@ -25,3 +25,4 @@ torchmdexp/nn/trainings/
 torchmdexp/nn/arguments/
 torchmdexp/datasets/
 scripts/trainings
+scripts/simulations
