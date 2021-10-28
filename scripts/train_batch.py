@@ -27,6 +27,7 @@ from torchmdexp.propagator import Propagator, sample
 from torchmdexp.nn.utils import get_embeddings, get_native_coords, load_datasets, rmsd, save_model
 from torchmdexp.pdataset import ProteinDataset
 from torchmdexp.sdataset import SystemsDataset
+from torchmdexp.nn.trainer import update_step, prepare_training, set_batch_size, set_ensembles
 from torchmdnet import datasets, priors, models
 from torchmdnet.data import DataModule
 from torchmdnet.models import output_modules
@@ -45,7 +46,7 @@ def get_args(arguments=None):
     parser.add_argument('--load-model', default=None, help='Restart training using a model checkpoint')  # keep first
     parser.add_argument('--conf', '-c', type=open, action=LoadFromFile, help='Configuration yaml file')  # keep second
     parser.add_argument('--num-epochs', default=300, type=int, help='number of epochs')
-    parser.add_argument('--batch-size', default=32, type=int, help='batch size')
+    parser.add_argument('--batch-size', default=None, type=int, help='batch size')
     parser.add_argument('--inference-batch-size', default=None, type=int, help='Batchsize for validation and tests.')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--lr-patience', type=int, default=10, help='Patience for lr-schedule. Patience per eval-interval of validation')
@@ -148,34 +149,21 @@ if __name__ == "__main__":
     args = get_args()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
-    
-    #Logger
-    logs = LogWriter(args.log_dir,keys=('epoch', 'steps', 'Train loss',
-                                        'Val loss', 'lr'
-                                       )
-                    )
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
 
     # Loading the training and validation molecules
     train_set, val_set = load_datasets(args.data_dir, args.datasets, args.train_set, args.val_set, device = args.device)
     
-    # Add each molecule to the monitor
-    keys = ['epoch', 'steps', 'Train loss', 'Val loss', 'lr']
-    mol_names = []
-    for molecule in train_set:
-        name = molecule[0].viewname[:-4]
-        mol_names.append(name)
-        keys.append(name)
-    keys = tuple(keys)
-    
     #Logger
-    logs = LogWriter(args.log_dir,keys=keys)
-
+    keys = ('epoch', 'steps', 'Train loss', 'Val loss', 'lr')
+    logs, mol_names = prepare_training(train_set, keys, args)
     
     # Hparams    
     hparams = {'epochs': args.num_epochs,
               'max_steps': args.max_steps,
               'step_update': args.num_epochs / 10, 
-              'output_period': 1,
+              'output_period': 25,
               'lr': args.lr}
     
 
@@ -183,33 +171,15 @@ if __name__ == "__main__":
     gnn = LNNP(args)    
     optim = torch.optim.Adam(gnn.model.parameters(), lr=hparams['lr'])
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=args.step_size, gamma=0.8)
-    
-    
-    # Start some variables and hparams
-    
-    steps = hparams['max_steps']
-    output_period = 25
-    train_inds = list(range(len(train_set)))
-    val_inds = list(range(len(val_set))) if val_set is not None else []
-    best_val_loss = 1e12
+    best_val_loss = 1e12   
+    device = args.device
     
     # Define batch
-    n_gpus = torch.cuda.device_count()
-    assert n_gpus >= 2, f"Requires at least 2 GPUs to run, but got {n_gpus}"
-    world_size = n_gpus
-    
-    if len(train_set) < world_size:
-        batch_size = len(train_set)
-    else:
-        batch_size = n_gpus
-
+    batch_size = set_batch_size(train_set, args.batch_size)
     num_batches = len(train_set) // batch_size
     
-    ensembles = {}
-    for i in range(num_batches):
-        ensembles['batch' + str(i)] = [None] * batch_size  # List of ensembles
-        
-    weighted_ensembles = copy.deepcopy(ensembles)
+    ensembles = set_ensembles(num_batches, batch_size)        
+    weighted_ensembles = set_ensembles(num_batches, batch_size)
     
     # Start Training
     for epoch in range(hparams['epochs']):
@@ -227,76 +197,70 @@ if __name__ == "__main__":
             # Check if a reference sim has been run. If so, compute the weighted ensemble.
             
             batch_ensembles = ensembles['batch' + str(i)]
-            for idx, ensemble in enumerate(batch_ensembles):
-                if ensemble is not None:
-                    if args.last_sn:
-                        batch[idx][0].coords = np.array(ensemble.states[:, -1].cpu(), dtype = 'float32').reshape(batch[idx][0].numAtoms, 3, args.replicas) 
-
-                    weighted_ensemble = ensemble.compute(gnn, args.neff)                                                                
-                    weighted_ensembles['batch' + str(i)][idx] = weighted_ensemble
-                else:
-                    weighted_ensembles['batch' + str(i)][idx] = None   
+            #for idx, ensemble in enumerate(batch_ensembles):
+            if None not in batch_ensembles:
+                if args.last_sn:
+                    for idx in range(len(batch)):
+                        ensemble = batch_ensembles[idx]
+                        batch[idx][0].coords = np.array(
+                                                        ensemble.states[:, -1].cpu(), dtype = 'float32'
+                                                        ).reshape(batch[idx][0].numAtoms, 3, args.replicas) 
+                
+                batch_loss, weighted_ensembles['batch' + str(i)] = update_step(i, batch_ensembles, batch, gnn, optim, args)
+                if batch_loss:
+                    train_losses.append(batch_loss)
+                    continue
+                    
+            else:
+                weighted_ensembles['batch' + str(i)] = [None] * batch_size   
 
             # Check if Neff threshold is surpassed
-            
             reference = False
             if None in weighted_ensembles['batch' + str(i)]:
                 print(f'START {len(batch)} simulations...')
                 
                 # Create the External force. With the current reference NN parameters 
                 ref_gnn = copy.deepcopy(gnn).to("cpu")
-                                
+                
                 # Sample states from simulations
                 results = sample(batch, gnn, args)
                 
                 # Create the ensembles
+                args.device = device
+                gnn.model.to(args.device)
+
                 for idx, state in enumerate(results):
                     mol = batch[idx][0]
                     states = state[0]
                     boxes = state[1]
-                    
+                                        
                     embeddings = get_embeddings(mol, args.device, args.replicas)
-                    ensembles['batch' + str(i) ][idx] = Ensemble(mol, gnn, states, boxes, embeddings, args.forcefield, args.forceterms, 
+                    ensembles['batch' + str(i) ][idx] = Ensemble(mol, ref_gnn, states, boxes, embeddings, args.forcefield, args.forceterms, 
                                                  args.replicas, args.device, args.temperature,args.cutoff,
                                                  args.rfa, args.switch_dist, args.exclusions, torch.double, 
-                                                )
+                                                 )                
+                # Update step
+                batch_ensembles =  ensembles['batch' + str(i)]
+                batch_loss, weighted_ensembles['batch' + str(i)] = update_step(i, batch_ensembles, batch, gnn, optim, args)
+                # train losses
+                train_losses.append(batch_loss)
+
                 reference = True 
-                    
-                # Compute weighted ensembles
-                for idx, ensemble in enumerate(ensembles['batch' + str(i)]):
-                    weighted_ensembles['batch' + str(i)][idx] = ensemble.compute(gnn, args.neff)
-                    
-                    # VALIDATION
+
+                # VALIDATION
+                for idx, ensemble in enumerate(ensembles['batch' + str(i)]):                    
                     traj_losses = []
                     for state in ensemble.states[0]:
                         native_coords = get_native_coords(batch[idx][1], args.replicas, args.device)
                         ref_rmsd , _ = rmsd(native_coords, state)
                         traj_losses.append(ref_rmsd.item())
                     reference_losses.append(mean(traj_losses))
-            
-            
-            # BACKWARD PASS through each batched weighted ensemble
-            loss = 0
-            batch_weighted_ensembles = weighted_ensembles['batch' + str(i)]
-            for idx, weighted_ensemble in enumerate(batch_weighted_ensembles):
-                
-                native_coords  = get_native_coords(batch[idx][1], args.replicas, args.device)
-                pos_rmsd, _ = rmsd(native_coords, weighted_ensemble)
-                loss += torch.log(1.0 + pos_rmsd)
-            loss = torch.divide(loss, len(batch))
-            
-            optim.zero_grad()
-            loss.backward()
-            optim.step()
-            
-            # train losses
-            train_losses.append(loss.item())
-        
+                        
         # TRAIN LOSS
         train_loss = mean(train_losses)
         
         val_loss = None
-        results_dict = {'epoch':epoch, 'steps': steps,'Train loss': train_loss, 'Val loss': val_loss,
+        results_dict = {'epoch':epoch, 'steps': hparams['max_steps'],'Train loss': train_loss, 'Val loss': val_loss,
                         'lr':optim.param_groups[0]['lr']}
 
         # VALIDATION LOSS
