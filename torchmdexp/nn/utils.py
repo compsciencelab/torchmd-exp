@@ -2,6 +2,8 @@ import torch
 import numpy as np
 import os
 from torchmdexp.pdataset import ProteinDataset
+from torchmdexp.nn.ensemble import Ensemble
+import copy
 
 # RMSD between two sets of coordinates with shape (n_atoms, 3) using the Kabsch algorithm
 # Returns the RMSD and whether convergence was reached
@@ -93,3 +95,15 @@ def load_datasets(data_dir, datasets, train_set, val_set = None, device = 'cpu')
     val_set = ProteinDataset(val_proteins, pdbs_dir, psf_dir, xtc_dir = xtc_dir, device=device) if val_proteins is not None else None
 
     return train_set, val_set
+
+
+def save_model(ref_gnn, train_loss, val_loss, epoch, optim, args):
+                
+    path = f'{args.log_dir}/epoch={epoch}-train_loss={train_loss:.4f}-val_loss={val_loss:.4f}.ckpt'
+    torch.save({
+            'epoch': epoch,
+            'state_dict': ref_gnn.model.state_dict(),
+            'optimizer_state_dict': optim.state_dict(),
+            'loss': train_loss,
+            'hyper_parameters': ref_gnn.hparams,
+            }, path)

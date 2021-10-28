@@ -1,12 +1,43 @@
 import copy
 import torch
+from torchmd.forcefields.forcefield import ForceField
+from torchmd.forces import Forces
+from torchmd.parameters import Parameters
 
 BOLTZMAN = 0.001987191
 
 class Ensemble:
-    def __init__(self, prior_forces, model, states, boxes, embeddings, T, device, dtype):
-        self.prior_forces = prior_forces
-        self.model = model
+    def __init__(
+        self,
+        mol, 
+        model, 
+        states, 
+        boxes, 
+        embeddings, 
+        forcefield,
+        terms,
+        replicas = 1,
+        device='cpu',
+        T = 350,
+        cutoff=None,
+        rfa=None,
+        switch_dist=None,
+        exclusions = ("bonds"),
+        dtype = torch.double,
+     ):
+        self.mol = mol
+        self.forcefield = forcefield
+        self.terms = terms
+        self.replicas = replicas
+        self.device = device
+        self.T = T
+        self.cutoff = cutoff
+        self.rfa = rfa
+        self.switch_dist = switch_dist
+        self.exclusions = exclusions
+        self.dtype = dtype
+
+        self.model = model.to(device)
         self.states = states.to(device)
         self.boxes = boxes.to(device)
         self.iforces = torch.zeros_like(self.states)
@@ -15,17 +46,21 @@ class Ensemble:
         self.batch = torch.arange(embeddings.size(0), device=device).repeat_interleave(
             embeddings.size(1)
         )
-
-        self.T = T
-        self.device = device
-        self.dtype = dtype
         
-        
+        self.prior_forces = self.set_prior_forces()
         self.prior_energies = self._priorEpot()
         self.U_ref = torch.add(self.prior_energies, self._extEpot(self.model, "val"))
             
-    def _priorEpot(self):
+    def set_prior_forces(self):
         
+        ff = ForceField.create(self.mol, self.forcefield)
+        parameters = Parameters(ff, self.mol, terms=self.terms, device=self.device)
+        
+        return Forces(parameters, terms=self.terms, external=None, cutoff=self.cutoff, 
+                        rfa=self.rfa, switch_dist=self.switch_dist, exclusions = self.exclusions
+                        )
+
+    def _priorEpot(self):
         prior_energies = torch.zeros(len(self.states), len(self.states[0]), device = self.device, dtype=self.dtype)
         for i in range(len(self.states[0])):
             prior_energies[:, i] = torch.tensor(self.prior_forces.compute(self.states[:, i], self.boxes[:, i], self.iforces[:, i]))
@@ -67,12 +102,12 @@ class Ensemble:
         return neff
     
     def compute(self, model, neff_threshold):
-        
+                
         weights = self._weights(model)
         
         n = len(weights[0])
         neff_hats = self._effectiven(weights)
-        
+
         weights = weights[:, :, None, None]
         ensemble = torch.sum(torch.multiply(weights, self.states), axis=1)
         
