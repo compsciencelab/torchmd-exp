@@ -79,12 +79,12 @@ Once we've sampled the states we create the [Ensemble](https://github.com/compsc
 
 Where <img src="https://render.githubusercontent.com/render/math?math=\hat{\theta}"> are the parameters of the reference Neural Network (the once we have used to generate the trajectory) and <img src="https://render.githubusercontent.com/render/math?math=\theta"> are the parameters of the Neural Network that we will update. Notice that before the first update step <img src="https://render.githubusercontent.com/render/math?math=\theta = \hat{\theta}">. Then we compute the weighted ensemble 
 <p align="center">
-<img src="https://render.githubusercontent.com/render/math?math=\theta = \langle O_k(U_{\theta}) \rangle ">
+<img src="https://render.githubusercontent.com/render/math?math=\langle O_k(U_{\theta}) \rangle \simeq \sum_{i=1}^N w_iO_k(S_i, U_{\theta}) ">
 </p>
 
 And the loss, that in our case is 
 <p align="center">
-<img src="https://render.githubusercontent.com/render/math?math=L(\theta) = ln ( RMSD(\hat{O}_k, \langle O_k(U_{\theta}) \rangle)+1.0) ">
+<img src="https://render.githubusercontent.com/render/math?math=L(\theta)=ln(RMSD(\hat{O}_k,\langle O_k(U_{\theta})\rangle)+1.0) ">
 </p>
 
 Being <img src="https://render.githubusercontent.com/render/math?math=\hat{O}_k "> the PDB coordinates.
