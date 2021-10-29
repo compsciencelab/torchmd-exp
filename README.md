@@ -71,7 +71,7 @@ def forward(self, steps, output_period, iforces = None, timestep=1, gamma=None):
 
 ```
 From this trajectory we sample some states (<img src="https://render.githubusercontent.com/render/math?math=S = S_1 ... S_N">). This states are sampled every 25 steps, therefore, if the trajectory is 2000 steps in total we end up with 80 uncorrelated states. And, in our case, the states are 3D coordinates of the molecule. 
-Once we've sampled the states we create the [Ensemble](https://github.com/compsciencelab/torchmd-exp/blob/multi_systems/torchmdexp/nn/ensemble.py) object. Then we compute the weighted ensemble of the states we have sampled. To do so, we compute the weight <img src="https://render.githubusercontent.com/render/math?math=S = w_i"> for each state <img src="https://render.githubusercontent.com/render/math?math=S_i"> by using the formula:
+Once we've sampled the states we create the [Ensemble](https://github.com/compsciencelab/torchmd-exp/blob/multi_systems/torchmdexp/nn/ensemble.py) object. Then we compute the weighted ensemble of the states we have sampled. To do so, we compute the weight <img src="https://render.githubusercontent.com/render/math?math= w_i"> for each state <img src="https://render.githubusercontent.com/render/math?math=S_i"> by using the formula:
 
 <p align="center">
 <img src="https://render.githubusercontent.com/render/math?math=w_i = \frac{e^{\beta(U_{\theta}(S_i) - U_{\hat{\theta}}(S_i))}}{\sum_{i=j}^N e^{-\beta(U_{\theta}(S_j) - U_{\hat{\theta}}(S_j)}}">
