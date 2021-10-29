@@ -157,124 +157,25 @@ if __name__ == "__main__":
     
     #Logger
     keys = ('epoch', 'steps', 'Train loss', 'Val loss', 'lr')
-            
-    logs, mol_names = prepare_training(train_set, keys, args)
     
-    # Hparams    
-    hparams = {'epochs': args.num_epochs,
-              'max_steps': args.max_steps,
-              'step_update': args.num_epochs / 10, 
-              'output_period': 25,
-              'lr': args.lr}
-    
-
     # Define the NN model
     gnn = LNNP(args)    
-    optim = torch.optim.Adam(gnn.model.parameters(), lr=hparams['lr'])
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=args.step_size, gamma=0.8)
-    best_val_loss = 1e12   
-    device = args.device
+    optim = torch.optim.Adam(gnn.model.parameters(), lr=args.lr)
+
+    trainer = Trainer(train_set, 
+                      keys, args.log_dir, 
+                      args.batch_size, 
+                      args.replicas, 
+                      args.device, 
+                      args.last_sn, 
+                      args.num_epochs
+                     )
     
-    # Define batch
-    batch_size = set_batch_size(train_set, args.batch_size)
-    num_batches = len(train_set) // batch_size
+    trainer.prepare_training()
+    print('logs ', trainer.logs)
+    print('batch size ',trainer.batch_size)
+    print('num batches ', trainer.num_batches)
+    print('ensembles ', trainer.ensembles)
+    print('weighted ensembles ', trainer.weighted_ensembles)
     
-    ensembles = set_ensembles(num_batches, batch_size)        
-    weighted_ensembles = set_ensembles(num_batches, batch_size)
-    
-    # Start Training
-    for epoch in range(hparams['epochs']):
-        epoch += 1
-
-        # TRAIN LOOP
-        train_losses = []
-        reference_losses = []
-        
-        
-        for i in range(num_batches):
-
-            batch = train_set[batch_size*i:batch_size*i + batch_size]
-            
-            # Check if a reference sim has been run. If so, compute the weighted ensemble.
-            
-            batch_ensembles = ensembles['batch' + str(i)]
-            #for idx, ensemble in enumerate(batch_ensembles):
-            if None not in batch_ensembles:
-                if args.last_sn:
-                    for idx in range(len(batch)):
-                        ensemble = batch_ensembles[idx]
-                        batch[idx][0].coords = np.array(
-                                                        ensemble.states[:, -1].cpu(), dtype = 'float32'
-                                                        ).reshape(batch[idx][0].numAtoms, 3, args.replicas) 
-                
-                batch_loss, weighted_ensembles['batch' + str(i)] = update_step(i, batch_ensembles, batch, gnn, optim, args)
-                if batch_loss:
-                    train_losses.append(batch_loss)
-                    continue
-                    
-            else:
-                weighted_ensembles['batch' + str(i)] = [None] * batch_size   
-
-            # Check if Neff threshold is surpassed
-            reference = False
-            if None in weighted_ensembles['batch' + str(i)]:
-                print(f'START {len(batch)} simulations...')
-                
-                # Create the External force. With the current reference NN parameters 
-                ref_gnn = copy.deepcopy(gnn).to("cpu")
-                
-                # Sample states from simulations
-                results = sample(batch, gnn, args)
-                
-                # Create the ensembles
-                args.device = device
-                gnn.model.to(args.device)
-
-                for idx, state in enumerate(results):
-                    mol = batch[idx][0]
-                    states = state[0]
-                    boxes = state[1]
-                                        
-                    embeddings = get_embeddings(mol, args.device, args.replicas)
-                    ensembles['batch' + str(i) ][idx] = Ensemble(mol, ref_gnn, states, boxes, embeddings, args.forcefield, args.forceterms, 
-                                                 args.replicas, args.device, args.temperature,args.cutoff,
-                                                 args.rfa, args.switch_dist, args.exclusions, torch.double, 
-                                                 )                
-                # Update step
-                batch_ensembles =  ensembles['batch' + str(i)]
-                batch_loss, weighted_ensembles['batch' + str(i)] = update_step(i, batch_ensembles, batch, gnn, optim, args)
-                # train losses
-                train_losses.append(batch_loss)
-
-                reference = True 
-
-                # VALIDATION
-                for idx, ensemble in enumerate(ensembles['batch' + str(i)]):                    
-                    traj_losses = []
-                    for state in ensemble.states[0]:
-                        native_coords = get_native_coords(batch[idx][1], args.replicas, args.device)
-                        ref_rmsd , _ = rmsd(native_coords, state)
-                        traj_losses.append(ref_rmsd.item())
-                    reference_losses.append(mean(traj_losses))
-                        
-        # TRAIN LOSS
-        train_loss = mean(train_losses)
-        
-        val_loss = None
-        results_dict = {'epoch':epoch, 'steps': hparams['max_steps'],'Train loss': train_loss, 'Val loss': val_loss,
-                        'lr':optim.param_groups[0]['lr']}
-
-        # VALIDATION LOSS
-        if reference_losses != []:
-            val_loss = mean(reference_losses)
-            results_dict['Val loss'] = val_loss
-            for single_val_rmsd in zip(mol_names, reference_losses):
-                results_dict[single_val_rmsd[0]] = single_val_rmsd[1]
-        
-        # WRITE RESULTS
-        logs.write_row(results_dict)
-
-        # SAVE MODEL
-        if val_loss is not None and val_loss < best_val_loss:
-            best_val_loss = val_loss
-            save_model(ref_gnn, train_loss, val_loss, epoch, optim, args)
+    trainer.train(gnn, optim)
