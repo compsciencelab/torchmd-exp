@@ -32,5 +32,5 @@ The main goal of the package is to create a Neural Network Potential that is abl
 ### Trajectory Reweighting
 
 In this image it is ilustrated the schematic view of a Differentiable Reweighted Simulation:
-
+![](imgs/Captura de pantalla 2021-10-29 a las 11.46.28.png)
 
