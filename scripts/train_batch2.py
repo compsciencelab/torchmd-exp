@@ -163,19 +163,30 @@ if __name__ == "__main__":
     optim = torch.optim.Adam(gnn.model.parameters(), lr=args.lr)
 
     trainer = Trainer(train_set, 
-                      keys, args.log_dir, 
+                      keys, 
+                      args.log_dir, 
                       args.batch_size, 
                       args.replicas, 
                       args.device, 
                       args.last_sn, 
-                      args.num_epochs
+                      args.num_epochs,
+                      args.max_steps,
+                      args.forcefield,
+                      args.forceterms,
+                      args.temperature,
+                      args.cutoff,
+                      args.rfa,
+                      args.switch_dist,
+                      args.exclusions, 
+                      args.neff
                      )
     
     trainer.prepare_training()
-    print('logs ', trainer.logs)
-    print('batch size ',trainer.batch_size)
-    print('num batches ', trainer.num_batches)
-    print('ensembles ', trainer.ensembles)
-    print('weighted ensembles ', trainer.weighted_ensembles)
+    print('Starting training...')
+    print('Training set of size: ', len(trainer.train_set))
+    print(f'Simulations of: {trainer.max_steps} steps')
+    print(f'Number of epochs: ', trainer.num_epochs)
+    print(f'Batch size: ', trainer.batch_size)
+    print(f'Writing logs to: ', trainer.log_dir)
     
     trainer.train(gnn, optim)
