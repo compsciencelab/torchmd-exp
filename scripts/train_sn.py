@@ -36,6 +36,8 @@ from torchmdnet.utils import LoadFromCheckpoint, save_argparse, number
 from tqdm import tqdm
 from torchmdexp.nn.utils import rmsd
 
+from concurrent.futures import ThreadPoolExecutor
+
 def get_args(arguments=None):
     # fmt: off
     parser = argparse.ArgumentParser(description='Training')
@@ -176,6 +178,14 @@ if __name__ == "__main__":
     val_inds = list(range(len(val_set))) if val_set is not None else []
     ensembles = [None] * len(train_set) # List of ensembles
     best_10_epochs = []
+    
+    # Define batch
+    n_gpus = torch.cuda.device_count()
+    assert n_gpus >= 2, f"Requires at least 2 GPUs to run, but got {n_gpus}"
+    if len(train_set) < n_gpus:
+        world_size = len(train_set)
+    else:
+        world_size = n_gpus
     
     for epoch in range(hparams['epochs']):
         epoch += 1

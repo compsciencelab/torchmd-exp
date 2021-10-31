@@ -5,6 +5,10 @@ from torchmd.forces import Forces
 from torchmd.integrator import Integrator, maxwell_boltzmann
 from torchmd.parameters import Parameters
 from torchmd.systems import System
+from torchmdexp.nn.utils import get_embeddings
+from torchmdexp.nn.calculator import External
+from torchmdexp.nn.ensemble import Ensemble
+from concurrent.futures import ThreadPoolExecutor
 
 
 class Propagator(torch.nn.Module):
@@ -20,14 +24,14 @@ class Propagator(torch.nn.Module):
         cutoff=None,
         rfa=None,
         switch_dist=None,
-        exclusions = ("bonds", "angles", "1-4"),
+        exclusions = ("bonds"),
         precision = torch.double
     ): 
         super(Propagator, self).__init__() 
         self.mol = mol
         self.forcefield = forcefield
         self.terms = terms
-        self.external = external
+        self.external = copy.deepcopy(external)
         self.replicas = replicas
         self.device = device
         self.T = T

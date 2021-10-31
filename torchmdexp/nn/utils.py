@@ -2,6 +2,8 @@ import torch
 import numpy as np
 import os
 from torchmdexp.pdataset import ProteinDataset
+from torchmdexp.nn.ensemble import Ensemble
+import copy
 
 # RMSD between two sets of coordinates with shape (n_atoms, 3) using the Kabsch algorithm
 # Returns the RMSD and whether convergence was reached

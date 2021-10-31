@@ -33,3 +33,4 @@ scripts/trainings
 scripts/simulations
 torchmdexp/nn/ntbs/1D_TICA_plots.ipynb
 .nfs*
+torchmdexp/arguments
