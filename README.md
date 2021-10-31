@@ -277,6 +277,10 @@ The next images show the training process of training Chignolin with this method
 <p align="center">
     
 ![](imgs/train_loss_cln.png)
+
+</p>
+<p align="center">
+    
 ![](imgs/val_loss_cln.png)
     
 </p>
@@ -285,7 +289,7 @@ Then the selected model is used to run a test 1ns simulation with torchMD. And i
 <p align="center">
     
 ![](imgs/test_sim_cln.png)
- 
+    
 </p>
 
 Yaml file used for the simulation:
