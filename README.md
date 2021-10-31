@@ -275,13 +275,17 @@ def _update_step(self, batch_weighted_ensembles, batch, model, optim):
 
 The next images show the training process of training Chignolin with this method. In this case we train on a single protein for simplicity, but it has been tested using more than one protein, and the goal is to make it work for several proteins. Moreover, we use as a starting Neural Network Potential a Graph Neural Network pretrained using a force-matching approach on the Lambda Repressor, so we show that this bottom-up training can be used to refine top-down approaches. 
 <p align="center">
+    
 ![](imgs/train_loss_cln.png)
 ![](imgs/val_loss_cln.png)
+    
 </p>
 
 Then the selected model is used to run a test 1ns simulation with torchMD. And it is able to fold Chignolin.
 <p align="center">
+    
 ![](imgs/test_sim_cln.png)
+ 
 </p>
 
 Yaml file used for the simulation:
