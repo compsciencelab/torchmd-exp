@@ -28,7 +28,7 @@ To install PyTorch Geometric via pip or for PyTorch < 1.8, see https://github.co
 ## How does the model works?
 
 The main goal of the package is to create a Neural Network Potential that is able to fold any protein. To do so, we run 2000 steps coarse-grained molecular simulations using torchMD using a prior potential (bonds, repulsions and dihendrals) and a Graph Neural Network ([SchNet](https://github.com/compsciencelab/schnetpack)) as a force field. The problem with differentiable simulations is that, if we keep the gradients for the whole trajectory, the memory required is too high, therefore we have implemented a **trajectory reweighting** strategy, based on [Learning neural network potentials from experimental data via Differentiable Trajectory Reweighting](https://arxiv.org/pdf/2106.01138.pdf).
-=======
+
 ## How does the model works?
 
 The main goal of the package is to create a Neural Network Potential that is able to fold any protein. To do so, we run 2000 coarse-grained steps molecular simulations using torchMD using a prior potential (bonds, repulsions and dihendrals) and a Graph Neural Network ([SchNet](https://github.com/compsciencelab/schnetpack)) as a force field. The problem with differentiable simulations is that, if we keep the gradients for the whole trajectory, the memory required is too high, therefore we have implemented a **trajectory reweighting** strategy, based on [Learning neural network potentials from experimental data via Differentiable Trajectory Reweighting](https://arxiv.org/pdf/2106.01138.pdf).
@@ -320,14 +320,4 @@ external:
 The main limitation right now is the number of different proteins we can train at the same time. Since 1 reference simulation of 2000 steps on a GPU takes around 1 minute, with a train set of a 1000 proteins it would take 16 h to complete 1 epoch without parallelization, which is undoable. For now we are training on a metro with 4 gpus and running 1 simulation on each gpu using ```ThredPoolExecutor``` and it is possible to train all the fast folding proteins (12) in a reasonable time. But the idea is to train on thousands of different proteins. 
 
 Some comments or recommendations about other parts of the project are also very welcome.
-
-
-
-
-
-
-
-
-=======
-
 
