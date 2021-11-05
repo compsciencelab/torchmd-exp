@@ -249,7 +249,7 @@ class Trainer:
         
     def _save_model(self, ref_model, train_loss, val_loss, epoch, optim):
         
-        if val_loss is not None and val_loss < self.best_val_loss and train_loss > 0:
+        if val_loss is not None and val_loss < self.best_val_loss and epoch > 100:
             self.best_val_loss = val_loss
             path = f'{self.log_dir}/epoch={epoch}-train_loss={train_loss:.4f}-val_loss={val_loss:.4f}.ckpt'
             torch.save({
