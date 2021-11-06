@@ -3,11 +3,9 @@ notebooks/TrainParams.ipynb
 notebooks/plot_rmsds.ipynb
 notebooks/
 ntbs/
-<<<<<<< HEAD
-=======
+normal_training.ipynb
 datasets/
 torchmdexp/nn/ntbs/
->>>>>>> 4e8d604a59f0d84aca571e0b3121c72500d16301
 greener.py
 rmsd.py
 .ipynb_checkpoints
