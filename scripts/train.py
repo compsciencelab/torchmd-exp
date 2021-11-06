@@ -11,6 +11,7 @@ from torchmdnet.models import output_modules
 from torchmdnet.models.model import create_model, load_model
 from torchmdnet.models.utils import rbf_class_mapping, act_class_mapping
 from torchmdnet.utils import LoadFromCheckpoint, save_argparse, number
+import torch.multiprocessing as mp
 
 def get_args(arguments=None):
     # fmt: off
@@ -87,10 +88,12 @@ if __name__ == "__main__":
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-
+    
+    mp.set_start_method('spawn')
+    
     # Loading the training and validation molecules
     train_set, val_set = load_datasets(args.data_dir, args.datasets, args.train_set, args.val_set, device = args.device)
-    
+
     #Logger
     keys = ('epoch', 'steps', 'Train loss', 'Val loss', 'lr')
     

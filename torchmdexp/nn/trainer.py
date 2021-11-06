@@ -5,7 +5,7 @@ from torchmd.utils import save_argparse, LogWriter
 import copy
 from torchmdexp.propagator import Propagator
 from torchmdexp.nn.calculator import External
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from torchmdexp.nn.utils import get_embeddings, get_native_coords, rmsd
 from torchmdexp.nn.ensemble import Ensemble
 from statistics import mean
@@ -109,9 +109,6 @@ class Trainer:
     def _sample_states(self, batch, model, device):
         batch_propagators = []
         
-        def do_sim(propagator):
-            states, boxes = propagator.forward(2000, 25, gamma = 350)
-            return (states, boxes)
         
         # Create the propagator object for each batched molecule
         for idx, m in enumerate(batch):
@@ -131,7 +128,7 @@ class Trainer:
             batch_propagators.append((propagator))
         
         # Simulate and sample states for the batched molecules
-        pool = ThreadPoolExecutor()
+        pool = ProcessPoolExecutor()
         results = list(pool.map(do_sim, batch_propagators))
         
         return results
@@ -284,3 +281,7 @@ class Trainer:
             ensembles['batch' + str(i)] = [None] * batch_size  # List of ensembles
 
         return ensembles
+
+def do_sim(propagator):
+    states, boxes = propagator.forward(2000, 25, gamma = 350)
+    return (states, boxes)
