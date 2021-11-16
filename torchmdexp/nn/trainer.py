@@ -5,10 +5,12 @@ from torchmd.utils import save_argparse, LogWriter
 import copy
 from torchmdexp.propagator import Propagator
 from torchmdexp.nn.calculator import External
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from torchmdexp.nn.utils import get_embeddings, get_native_coords, rmsd
 from torchmdexp.nn.ensemble import Ensemble
 from statistics import mean
+
+import time
 
 class Trainer:
     def __init__(
@@ -29,7 +31,8 @@ class Trainer:
         rfa,
         switch_dist,
         exclusions,
-        neff
+        neff,
+        min_rmsd
     ):
         self.train_set = train_set
         self.keys = keys
@@ -48,6 +51,7 @@ class Trainer:
         self.switch_dist = switch_dist
         self.exclusions = exclusions
         self.neff = neff
+        self.min_rmsd = min_rmsd
         
         
         self.best_val_loss = 1e12
@@ -69,11 +73,12 @@ class Trainer:
             train_losses = []
             ref_losses_dict = {mol_name: None for mol_name in self.mol_names}
             ref_losses = []
+            batch_loss = 0
             
             for i in range(self.num_batches):
                 batch = self.train_set[self.batch_size * i:self.batch_size * i + self.batch_size]
                 batch_ensembles = self.ensembles['batch' + str(i)]
-                ref_sim, batch_weighted_ensembles = self._check_threshold(batch_ensembles, model)
+                ref_sim, batch_weighted_ensembles = self._check_threshold(batch_ensembles, batch_loss, model)
                 
                 if ref_sim:
                     print(f'Start {len(batch)} simulations')
@@ -82,16 +87,19 @@ class Trainer:
                     # Define Sinit
                     batch = self._set_init_coords(batch, batch_ensembles)
                     # Run reference simulations
+                    start_sims = time.perf_counter()
                     results = self._sample_states(batch, model, self.device)
+                    end_sims = time.perf_counter()
+                    print(f'Time to run {len(self.train_set)} simulations: ', end_sims - start_sims)
                     # Create the ensembles
                     self.ensembles['batch' + str(i)] = self._create_ensembles(results, batch, ref_model)
                     # Compute weighted ensembles
-                    ref_sim, batch_weighted_ensembles = self._check_threshold(self.ensembles['batch' + str(i)], model)
+                    ref_sim, batch_weighted_ensembles = self._check_threshold(self.ensembles['batch' + str(i)], batch_loss, model)
                     # Compute the average rmsd over the trajectories. Which is the val loss
                     ref_losses, ref_losses_dict = self._val_rmsd(self.ensembles['batch' + str(i)], batch, ref_losses, ref_losses_dict)
                     
                 # Update model parameters
-                batch_loss = self._update_step(batch_weighted_ensembles, batch, model, optim)
+                batch_loss = self._update_step(batch_weighted_ensembles, batch, ref_losses_dict, model, optim)
                 train_losses.append(batch_loss)
             
             
@@ -105,15 +113,12 @@ class Trainer:
     
     def _sample_states(self, batch, model, device):
         batch_propagators = []
-        
-        def do_sim(propagator):
-            states, boxes = propagator.forward(2000, 25, gamma = 350)
-            return (states, boxes)
+        model.model.share_memory()
         
         # Create the propagator object for each batched molecule
         for idx, m in enumerate(batch):
             device = 'cuda:' + str(idx)
-            model.model.to(device)
+            #model.model.to(device)
 
             mol = batch[idx][0]
 
@@ -128,7 +133,7 @@ class Trainer:
             batch_propagators.append((propagator))
         
         # Simulate and sample states for the batched molecules
-        pool = ThreadPoolExecutor()
+        pool = ProcessPoolExecutor()
         results = list(pool.map(do_sim, batch_propagators))
         
         return results
@@ -149,22 +154,30 @@ class Trainer:
         return batch_ensembles
             
     
-    def _update_step(self, batch_weighted_ensembles, batch, model, optim):
+    def _update_step(self, batch_weighted_ensembles, batch, ref_losses_dict, model, optim):
 
         # BACKWARD PASS through each batched weighted ensemble
         loss = 0
+        batch_updates = 0
+        batch_loss = 0
         for idx, weighted_ensemble in enumerate(batch_weighted_ensembles):
-
-            native_coords  = get_native_coords(batch[idx][1], self.replicas, self.device)
-            pos_rmsd, _ = rmsd(native_coords, weighted_ensemble)
-            loss += torch.log(1.0 + pos_rmsd)
-        loss = torch.divide(loss, len(batch))
-
-        optim.zero_grad()
-        loss.backward()
-        optim.step()
+            mol_name = batch[idx][0].viewname[:-4]
+            if ref_losses_dict[mol_name] is not None and ref_losses_dict[mol_name] > self.min_rmsd:
+                
+                batch_updates += 1
+                native_coords  = get_native_coords(batch[idx][1], self.replicas, self.device)
+                pos_rmsd, _ = rmsd(native_coords, weighted_ensemble)
+                loss += torch.log(1.0 + pos_rmsd)
         
-        batch_loss = loss.item()
+        if batch_updates >= 1:
+            loss = torch.divide(loss, batch_updates)
+
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+        
+            batch_loss = loss.item()
+        
         return batch_loss
     
     def _val_rmsd(self, batch_ensembles, batch, ref_losses, ref_losses_dict):
@@ -181,7 +194,7 @@ class Trainer:
         return ref_losses, ref_losses_dict
        
     
-    def _check_threshold(self, batch_ensembles, model):
+    def _check_threshold(self, batch_ensembles, batch_loss, model):
         
         # Check if there is some simulation that has surpassed the Neff threshold
         batch_weighted_ensembles = [None] * self.batch_size
@@ -195,7 +208,7 @@ class Trainer:
                 batch_weighted_ensembles[idx] = weighted_ensemble
         
         # If we have not run any reference simulation or we have surpassed the threshold run a new ref simulation
-        if None in batch_weighted_ensembles:
+        if None in batch_weighted_ensembles or batch_loss == 0:
             ref_sim = True
         
         return ref_sim, batch_weighted_ensembles
@@ -238,7 +251,7 @@ class Trainer:
         
     def _save_model(self, ref_model, train_loss, val_loss, epoch, optim):
         
-        if val_loss is not None and val_loss < self.best_val_loss:
+        if val_loss is not None and val_loss < self.best_val_loss and epoch > 100:
             self.best_val_loss = val_loss
             path = f'{self.log_dir}/epoch={epoch}-train_loss={train_loss:.4f}-val_loss={val_loss:.4f}.ckpt'
             torch.save({
@@ -273,3 +286,7 @@ class Trainer:
             ensembles['batch' + str(i)] = [None] * batch_size  # List of ensembles
 
         return ensembles
+
+def do_sim(propagator):
+    states, boxes = propagator.forward(2000, 25, gamma = 350)
+    return (states, boxes)

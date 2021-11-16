@@ -11,6 +11,7 @@ from torchmdnet.models import output_modules
 from torchmdnet.models.model import create_model, load_model
 from torchmdnet.models.utils import rbf_class_mapping, act_class_mapping
 from torchmdnet.utils import LoadFromCheckpoint, save_argparse, number
+import torch.multiprocessing as mp
 
 def get_args(arguments=None):
     # fmt: off
@@ -62,7 +63,8 @@ def get_args(arguments=None):
     parser.add_argument('--max_steps',type=int,default=2000,help='Total number of simulation steps')
     parser.add_argument('--neff',type=int,default=0.9,help='Neff threshold')
     parser.add_argument('--last_sn', default = None, help='Select if want to use last sn to start next simulations')
-    
+    parser.add_argument('--min_rmsd',type=int,default=1,help='Min rmsd during training')
+
     # other args
     parser.add_argument('--derivative', default=True, type=bool, help='If true, take the derivative of the prediction w.r.t coordinates')
     parser.add_argument('--cutoff-lower', type=float, default=0.0, help='Lower cutoff in model')
@@ -86,10 +88,12 @@ if __name__ == "__main__":
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-
+    
+    mp.set_start_method('spawn')
+    
     # Loading the training and validation molecules
     train_set, val_set = load_datasets(args.data_dir, args.datasets, args.train_set, args.val_set, device = args.device)
-    
+
     #Logger
     keys = ('epoch', 'steps', 'Train loss', 'Val loss', 'lr')
     
@@ -113,7 +117,8 @@ if __name__ == "__main__":
                       args.rfa,
                       args.switch_dist,
                       args.exclusions, 
-                      args.neff
+                      args.neff,
+                      args.min_rmsd
                      )
     
     trainer.prepare_training()
