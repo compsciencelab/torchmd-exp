@@ -10,8 +10,6 @@ from torchmdexp.nn.utils import get_embeddings, get_native_coords, rmsd
 from torchmdexp.nn.ensemble import Ensemble
 from statistics import mean
 
-import time
-
 class Trainer:
     def __init__(
         self,
@@ -87,14 +85,14 @@ class Trainer:
                     # Define Sinit
                     batch = self._set_init_coords(batch, batch_ensembles)
                     # Run reference simulations
-                    start_sims = time.perf_counter()
                     results = self._sample_states(batch, model, self.device)
-                    end_sims = time.perf_counter()
-                    print(f'Time to run {len(self.train_set)} simulations: ', end_sims - start_sims)
+
                     # Create the ensembles
                     self.ensembles['batch' + str(i)] = self._create_ensembles(results, batch, ref_model)
+                    
                     # Compute weighted ensembles
                     ref_sim, batch_weighted_ensembles = self._check_threshold(self.ensembles['batch' + str(i)], batch_loss, model)
+                    
                     # Compute the average rmsd over the trajectories. Which is the val loss
                     ref_losses, ref_losses_dict = self._val_rmsd(self.ensembles['batch' + str(i)], batch, ref_losses, ref_losses_dict)
                     
