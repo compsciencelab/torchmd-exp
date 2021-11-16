@@ -10,6 +10,8 @@ from torchmdexp.nn.utils import get_embeddings, get_native_coords, rmsd
 from torchmdexp.nn.ensemble import Ensemble
 from statistics import mean
 
+import time
+
 class Trainer:
     def __init__(
         self,
@@ -85,7 +87,10 @@ class Trainer:
                     # Define Sinit
                     batch = self._set_init_coords(batch, batch_ensembles)
                     # Run reference simulations
+                    start_sims = time.perf_counter()
                     results = self._sample_states(batch, model, self.device)
+                    end_sims = time.perf_counter()
+                    print(f'Time to run {len(self.train_set)} simulations: ', end_sims - start_sims)
                     # Create the ensembles
                     self.ensembles['batch' + str(i)] = self._create_ensembles(results, batch, ref_model)
                     # Compute weighted ensembles
@@ -108,12 +113,12 @@ class Trainer:
     
     def _sample_states(self, batch, model, device):
         batch_propagators = []
-        
+        model.model.share_memory()
         
         # Create the propagator object for each batched molecule
         for idx, m in enumerate(batch):
             device = 'cuda:' + str(idx)
-            model.model.to(device)
+            #model.model.to(device)
 
             mol = batch[idx][0]
 
