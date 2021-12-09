@@ -50,9 +50,10 @@ class ProteinDataset(Dataset):
             if xtc_mol: 
                 mol = Molecule(xtc_mol)
                 mol.read(psf_mol)
+                mol_ref.read(psf_mol)
             else:
-                
                 mol.read(psf_mol)
+                mol_ref.read(psf_mol)
             
             
             

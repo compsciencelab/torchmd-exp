@@ -20,6 +20,7 @@ def get_args(arguments=None):
     parser.add_argument('--conf', '-c', type=open, action=LoadFromFile, help='Configuration yaml file')  # keep second
     parser.add_argument('--num-epochs', default=300, type=int, help='number of epochs')
     parser.add_argument('--batch-size', default=None, type=int, help='batch size')
+    parser.add_argument('--ubatch-size', default=1, type=int, help= 'update batch size')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--precision', type=int, default=32, choices=[16, 32], help='Floating point precision')
     parser.add_argument('--log-dir', '-l', default='/trainings', help='log file')
@@ -105,6 +106,7 @@ if __name__ == "__main__":
                       keys, 
                       args.log_dir, 
                       args.batch_size, 
+                      args.ubatch_size,
                       args.replicas, 
                       args.device, 
                       args.last_sn, 
@@ -126,7 +128,8 @@ if __name__ == "__main__":
     print('Training set of size: ', len(trainer.train_set))
     print(f'Simulations of: {trainer.max_steps} steps')
     print(f'Number of epochs: ', trainer.num_epochs)
-    print(f'Batch size: ', trainer.batch_size)
+    print(f'Simulations Batch size: ', trainer.batch_size)
+    print(f'Updates Batch size: ', trainer.ubatch_size)
     print(f'Writing logs to: ', trainer.log_dir)
     
     trainer.train(gnn, optim)

@@ -9,114 +9,79 @@ BOLTZMAN = 0.001987191
 class Ensemble:
     def __init__(
         self,
-        mol, 
-        model, 
         states, 
-        boxes, 
-        embeddings, 
-        forcefield,
-        terms,
+        batch_size,
+        U_prior,
+        U_ext_hat,
+        embeddings,
+        batch,
+        T = 350,
         replicas = 1,
         device='cpu',
-        T = 350,
-        cutoff=None,
-        rfa=None,
-        switch_dist=None,
-        exclusions = ("bonds"),
         dtype = torch.double,
      ):
-        self.mol = mol
-        self.forcefield = forcefield
-        self.terms = terms
+        self.T = T
         self.replicas = replicas
         self.device = device
-        self.T = T
-        self.cutoff = cutoff
-        self.rfa = rfa
-        self.switch_dist = switch_dist
-        self.exclusions = exclusions
         self.dtype = dtype
-
-        self.model = model.to(device)
         self.states = states.to(device)
-        self.boxes = boxes.to(device)
-        self.iforces = torch.zeros_like(self.states)
-        
-        self.embeddings = embeddings.reshape(-1).to(device) 
-        self.batch = torch.arange(embeddings.size(0), device=device).repeat_interleave(
-            embeddings.size(1)
-        )
-        
-        self.prior_forces = self.set_prior_forces()
-        self.prior_energies = self._priorEpot()
-        self.U_ref = torch.add(self.prior_energies, self._extEpot(self.model, "val"))
-            
-    def set_prior_forces(self):
-        
-        ff = ForceField.create(self.mol, self.forcefield)
-        parameters = Parameters(ff, self.mol, terms=self.terms, device=self.device)
-        
-        return Forces(parameters, terms=self.terms, external=None, cutoff=self.cutoff, 
-                        rfa=self.rfa, switch_dist=self.switch_dist, exclusions = self.exclusions
-                        )
+        self.batch_size = batch_size
+        self.nstates = self.states.shape[0]
+        self.embeddings = embeddings.to(self.device)
+        self.batch = batch.to(self.device)
 
-    def _priorEpot(self):
-        prior_energies = torch.zeros(len(self.states), len(self.states[0]), device = self.device, dtype=self.dtype)
-        for i in range(len(self.states[0])):
-            prior_energies[:, i] = torch.tensor(self.prior_forces.compute(self.states[:, i], self.boxes[:, i], self.iforces[:, i]))
-        return prior_energies
+        self.U_prior = U_prior.to(self.device)
+        self.U_ext_hat = U_ext_hat.to(self.device)
+        self.U_ref = torch.add(self.U_prior, self.U_ext_hat)
+            
     
-                       
     def _extEpot(self, model, stage):
-        ext_energies = torch.zeros(len(self.states),len(self.states[0]) , device = self.device, dtype=self.dtype)
         
-        for i in range(len(self.states[0])):
-
-            pos = self.states[:, i].to(self.device).type(torch.float32).reshape(-1, 3)
-
-            if stage == "train":
-                ext_energies[:, i] = model.training_step(self.embeddings, pos, self.batch).squeeze(1)
-            elif stage == "val":
-                ext_energies[:, i] = model.validation_step(self.embeddings, pos, self.batch).squeeze(1)  
-            
+        pos = self.states.to(self.device).type(torch.float32).reshape(-1, 3)
+        if stage == "train":
+            ext_energies = model.training_step(self.embeddings, pos, self.batch).squeeze(1)
+        elif stage == "val":
+            ext_energies = model.validation_step(self.embeddings, pos, self.batch).squeeze(1)
         
+        ext_energies = ext_energies.reshape(self.nstates, self.batch_size).transpose(0, 1)
         return ext_energies
                        
     def _weights(self, model):
         
         
-        U = torch.add(self.prior_energies, self._extEpot(model, "train"))
-        
-        
+        U = torch.add(self.U_prior, self._extEpot(model, "train"))
         exponentials = torch.exp(-torch.divide(torch.subtract(U, self.U_ref), self.T*BOLTZMAN))
-        weights = torch.divide(exponentials, torch.sum(exponentials, 1).reshape(len(self.states),1).repeat(1, len(self.states[0])))
+        weights = torch.divide(exponentials, exponentials.sum(1).unsqueeze(1))
         
         return weights
     
     def _effectiven(self, weights):
         
         lnwi = torch.log(weights)
-        
-        neff = torch.exp(-torch.sum(torch.multiply(weights, lnwi), axis = 1))
+        neff = torch.exp(-torch.sum(torch.multiply(weights, lnwi), axis=1)).detach()
         
         return neff
     
-    def compute(self, model, neff_threshold):
+    def compute(self, model, mls, neff_threshold=None):
                 
         weights = self._weights(model)
+        n = len(weights)
+        neff_hat = self._effectiven(weights)
         
-        n = len(weights[0])
-        neff_hats = self._effectiven(weights)
-
-        weights = weights[:, :, None, None]
-        ensemble = torch.sum(torch.multiply(weights, self.states), axis=1)
+        # Compute the weighted ensemble of each molecule
+        pml = 0
+        w_ensembles = []
         
-        restart = 0
-        for idx, neff_hat in enumerate(neff_hats):
-            if neff_hat.item() < neff_threshold*n:
-                restart += 1
+        for idx, ml in enumerate(mls):
+            mol_states = self.states[:, pml:pml+ml, :] # select the states of each molecule
+            w_ensemble = torch.multiply(weights[idx].unsqueeze(1).unsqueeze(1), mol_states).sum(0) # w_ensemble of one 
+            w_ensembles.append(w_ensemble)                                                         # molecule
+            pml += ml
         
-        if restart > len(ensemble)*0.95:
-            return None
-        else:
-            return ensemble
+        #weights = weights[:, None, None]
+        #ensemble = torch.sum(torch.multiply(weights, self.states), axis=0)
+        
+        #if neff_hat.item() < neff_threshold*n:
+        #    return None
+        #else:
+        return w_ensembles

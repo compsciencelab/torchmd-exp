@@ -2,7 +2,7 @@ activation: silu
 batch_size: 128
 cutoff_lower: 0.0
 cutoff_upper: 5.0
-data_dir: /workspace7/torchmd-AD/train_cln_pdb
+data_dir: /workspace7/torchmd-AD/fastfolders/multiple/train_fast_folders
 distributed_backend: ddp
 derivative: True
 device: cpu
@@ -35,7 +35,7 @@ seed: 1
 step_update: 5
 test_interval: 10
 test_size: 0.1
-train_set: train_cln.txt
+train_set:  train_fast_folders.txt
 val_set: train_cln.txt
 trainable_rbf: True
 val_size: 0.05

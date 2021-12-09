@@ -19,6 +19,7 @@ atomtypes:
 - CAV
 - CAW
 - CAY
+- MAG
 bonds:
   (CAA, CAA):
     k0: 61.07861024450872
@@ -1220,6 +1221,9 @@ bonds:
   (CAY, CAY):
     k0: 70.76909687873237
     req: 3.840668421322776
+  (MAG, MAG):
+    k0: 0.0
+    req: 0.0
     
 dihedrals:
   (X, X, X, X):
@@ -1334,6 +1338,12 @@ lj:
     sigma: 1.0
     epsilon14: 2726.2984667592345
     sigma14: 1.0
+  MAG:
+    epsilon: 0.0
+    sigma: 0.0
+    epsilon14: 0.0
+    sigma14: 0.0
+
 
 electrostatics:
   CAA:
@@ -1376,7 +1386,8 @@ electrostatics:
     charge: 0.0
   CAY:
     charge: 0.0
-    
+  MAG:
+    charge: 0.0
 masses:
   CAA: 12.00
   CAC: 12.00
@@ -1398,3 +1409,4 @@ masses:
   CAV: 12.00
   CAW: 12.00
   CAY: 12.00
+  MAG: 00.00
