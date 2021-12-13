@@ -87,8 +87,8 @@ if __name__ == "__main__":
     args = get_args()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
-    torch.backends.cuda.matmul.allow_tf32 = False
-    torch.backends.cudnn.allow_tf32 = False
+    #torch.backends.cuda.matmul.allow_tf32 = False
+    #torch.backends.cudnn.allow_tf32 = False
     
     mp.set_start_method('spawn')
     

@@ -75,7 +75,7 @@ class Trainer:
         
         batch_sinit = {}
         for epoch in range(1, self.num_epochs + 1):
-                        
+
             ################################# BATCHED SIMULATIONS ##########################################
             for i in range(self.num_batches):
                                 
@@ -90,13 +90,17 @@ class Trainer:
                     
                     # Run reference simulations
                     states, boxes, self.batches['batch' + str(i)] = self._sample_states(batch, i, model, self.device)
+                    end = time.perf_counter()
                     batch_sinit['batch' + str(i)] = states[-1]
                     
-            ################################# BATCHED UPDATES ##########################################            
+            ################################# BATCHED UPDATES ##########################################   
+            
+            torch.cuda.empty_cache()
             train_losses = []
             ref_losses = []
             ref_losses_dict = {}     
-            
+                        
+            batch_loss = 0
             for i in range(self.num_batches):
                 
                 # TODO: Here we should selct the simulation batch
@@ -110,9 +114,9 @@ class Trainer:
                 
                 pupdate = 0
                 pnatoms = 0
-                batch_loss = 0
+                ubatch_loss = 0
                 for j in range(self.nupdate_batches):
-                        
+                    
                     # Select the size of the molecules in this update batch
                     ubatch_mls = mls[pupdate: pupdate+self.ubatch_size]
                     ubatch_native_mols = native_mols[pupdate: pupdate+self.ubatch_size]
@@ -121,21 +125,23 @@ class Trainer:
 
                     # Select the states for the molecules, the embeddings and create the batch
                     ustates = states[:, pnatoms:pnatoms+natoms, :]
-                    embeddings = embeddings[:, pnatoms:pnatoms+natoms].repeat(ustates.shape[0] , 1)
+                    uembeddings = embeddings[:, pnatoms:pnatoms+natoms].repeat(ustates.shape[0] , 1)
 
                     # Create the correct indeces for the batch size
-                    batch = self._create_batch_input(embeddings, self.ubatch_size, ubatch_mls, self.device)
-                    embeddings = embeddings.reshape(-1).to(self.device) 
+                    ubatch = self._create_batch_input(uembeddings, self.ubatch_size, ubatch_mls, self.device)
+                    uembeddings = uembeddings.reshape(-1).to(self.device) 
 
                     # Select the energies computed during the simulation
                     E_prior, E_ext = self._sample_Upot(ubatch_names, self.batches['batch' + str(i)])
 
                     # Create the ensemble and compute weighted
                     ensemble = Ensemble(ustates, self.ubatch_size, U_prior = E_prior,
-                                        U_ext_hat = E_ext, embeddings = embeddings, batch = batch, 
+                                        U_ext_hat = E_ext, embeddings = uembeddings, batch = ubatch, 
                                         device=self.device, T = self.temperature)
                     
                     loss = self._update_step(ensemble, ubatch_native_mols, ubatch_mls, model, optim)
+                    torch.cuda.empty_cache()
+                    ubatch_loss += loss
                     
                     # Compute the average rmsd over the trajectories. Which is the val loss
                     ref_losses, ref_losses_dict = self._val_rmsd(ustates, i, ubatch_native_mols, ubatch_names, 
@@ -145,9 +151,9 @@ class Trainer:
                     # Update the number of atoms and updates
                     pnatoms += natoms
                     pupdate += self.ubatch_size
-                
+                    
                 # Compute the total loss 
-                batch_loss += loss.item()
+                batch_loss += ubatch_loss / self.nupdate_batches
             
             # Train loss of the epoch
             train_losses.append(batch_loss)
@@ -252,27 +258,28 @@ class Trainer:
     
     def _update_step(self, ensemble, native_mols, mls, model, optim):
         
+        
         # If we have built some ensemble, compute the weighted ensemble 
         w_ensembles = ensemble.compute(model, mls)    
-        
+
         # BACKWARD PASS through weighted ensemble
                     
         loss = 0
         for idx, w_e in enumerate(w_ensembles):
-
             native_mol = native_mols[idx]
-            native_coords  = get_native_coords(native_mol, self.replicas, self.device)
+            native_coords = get_native_coords(native_mol, self.replicas, self.device)
+            #native_coords = native_coords.squeeze(0)
 
-            pos_rmsd, _ = rmsd(native_coords, w_e)
+            pos_rmsd = rmsd(native_coords, w_e)
             loss += torch.log(1.0 + pos_rmsd)
 
         loss /= self.ubatch_size
-
+        
         optim.zero_grad()
         loss.backward()
         optim.step()
                 
-        return loss
+        return loss.item()
     
     def _val_rmsd(self, states, batch_idx, ubatch_native_mols, mol_names, mls, ref_losses, ref_losses_dict):
         
@@ -285,7 +292,7 @@ class Trainer:
             native_coords = get_native_coords(native_mol, self.replicas, self.device)
             mol_name = mol_names[idx]
             for state in mol_states:
-                ref_rmsd , _ = rmsd(native_coords, state)
+                ref_rmsd = rmsd(native_coords, state)
                 traj_losses.append(ref_rmsd.item())
             pml += ml
             

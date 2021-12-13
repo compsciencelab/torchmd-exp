@@ -18,11 +18,15 @@ def rmsd(c1, c2):
     P = r1 - r1.mean(1).view(3, 1)
     Q = r2 - r2.mean(1).view(3, 1)
     cov = torch.matmul(P, Q.transpose(0, 1))
+    
     try:
         U, S, V = torch.svd(cov)
-    except RuntimeError:
-        print("  SVD failed to converge")
-        return torch.tensor([20.0], device=device), False
+    except:                     # torch.svd may have convergence issues for GPU and CPU.
+        U, S, V = torch.svd(cov + 1e-4*cov.mean()*torch.rand(cov.shape, device=cov.device))
+
+    #U, S, Vh = torch.linalg.svd(cov)
+    #V = Vh.transpose(-2, -1).conj()
+    
     d = torch.tensor([
             [1.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
@@ -33,7 +37,7 @@ def rmsd(c1, c2):
     diffs = rot_P - Q
     msd = (diffs ** 2).sum() / diffs.size(1)
     
-    return msd.sqrt(), True
+    return msd.sqrt()
 
 
 def get_embeddings(mol, device, replicas):

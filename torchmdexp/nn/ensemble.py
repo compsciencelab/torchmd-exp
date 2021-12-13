@@ -31,8 +31,8 @@ class Ensemble:
         self.batch = batch.to(self.device)
 
         self.U_prior = U_prior.to(self.device)
-        self.U_ext_hat = U_ext_hat.to(self.device)
-        self.U_ref = torch.add(self.U_prior, self.U_ext_hat)
+        self.U_ext_hat = None
+        self.U_ref = None
             
     
     def _extEpot(self, model, stage):
@@ -48,9 +48,14 @@ class Ensemble:
                        
     def _weights(self, model):
         
+        # Compute external Epot and create a new eternal Epot detached 
+        U_ext = self._extEpot(model, "train")
+        U_ext_hat = U_ext.detach()
         
-        U = torch.add(self.U_prior, self._extEpot(model, "train"))
-        exponentials = torch.exp(-torch.divide(torch.subtract(U, self.U_ref), self.T*BOLTZMAN))
+        U_ref = torch.add(self.U_prior, U_ext_hat)
+        U = torch.add(self.U_prior, U_ext)
+
+        exponentials = torch.exp(-torch.divide(torch.subtract(U, U_ref), self.T*BOLTZMAN))
         weights = torch.divide(exponentials, exponentials.sum(1).unsqueeze(1))
         
         return weights
@@ -65,6 +70,7 @@ class Ensemble:
     def compute(self, model, mls, neff_threshold=None):
                 
         weights = self._weights(model)
+        
         n = len(weights)
         neff_hat = self._effectiven(weights)
         

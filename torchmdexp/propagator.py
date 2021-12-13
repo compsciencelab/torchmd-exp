@@ -9,7 +9,7 @@ from torchmdexp.utils import get_embeddings
 from torchmdexp.nn.calculator import External
 from torchmdexp.nn.ensemble import Ensemble
 from concurrent.futures import ThreadPoolExecutor
-
+from tqdm import tqdm
 
 class Propagator(torch.nn.Module):
     def __init__(
