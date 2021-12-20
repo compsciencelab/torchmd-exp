@@ -70,7 +70,7 @@ class Propagator(torch.nn.Module):
 
         return system
     
-    def forward(self, steps, output_period, batch_ene, iforces = None, timestep=1, gamma=None):
+    def forward(self, steps, output_period, batch_ene, iforces = None, timestep=5, gamma=None):
     
         """
         Performs a simulation and returns the coordinates at desired times t.
@@ -93,7 +93,6 @@ class Propagator(torch.nn.Module):
         
         states = torch.zeros(nstates, len(system.pos[0]), 3, device = "cpu",
                              dtype = self.precision)
-        boxes = torch.zeros(nstates, 3, 3, device = "cpu", dtype = self.precision)
         
         names = []
         for mol in batch_ene:
@@ -114,11 +113,9 @@ class Propagator(torch.nn.Module):
             batch_ene = self._split_rep_ene(E_rep, ava_idx_cut, batch_ene, names, i-1)
             batch_ene = self._split_ex_ene(E_ex, batch_ene, i-1)
             
-            states[i-1] = system.pos.to("cpu")
-            boxes[i-1] = system.box.to("cpu")
+            states[i-1] = system.pos.to("cpu")        
         
-        
-        return states, boxes, batch_ene
+        return states, batch_ene
     
     
     def _split_bonds_ene(self, E_bonds, batch_ene, state_idx):

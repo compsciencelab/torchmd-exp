@@ -10,11 +10,15 @@ from torchmdexp.utils import get_embeddings, get_native_coords, rmsd
 from torchmdexp.nn.ensemble import Ensemble
 from statistics import mean
 import time
+import ray
+from torchmdexp.scheme.simulation.s_worker_set import SimWorkerSet
+from torchmdexp.scheme.simulator_worker_factory import simulator_worker_factory
 
 class Trainer:
     def __init__(
         self,
         train_set,
+        val_set,
         keys,
         log_dir,
         batch_size,
@@ -24,6 +28,7 @@ class Trainer:
         last_sn,
         num_epochs,
         max_steps,
+        output_period,
         forcefield,
         forceterms,
         temperature,
@@ -35,6 +40,7 @@ class Trainer:
         min_rmsd
     ):
         self.train_set = train_set
+        self.val_set = val_set
         self.keys = keys
         self.log_dir = log_dir
         self.batch_size = batch_size
@@ -44,6 +50,7 @@ class Trainer:
         self.last_sn = last_sn # If True, start training simulation i from last conformation of training simulation i-1 
         self.num_epochs = num_epochs
         self.max_steps = max_steps
+        self.output_period = output_period
         self.forcefield = forcefield
         self.forceterms = forceterms
         self.temperature = temperature
@@ -59,53 +66,87 @@ class Trainer:
         
     def prepare_training(self):
         
-        self.mol_names = self._get_mol_names()
+        self.mol_names = self._get_mol_names(self.train_set)
+        self.val_names = self._get_mol_names(self.val_set) if self.val_set else None
         self.logs = self._logger()
         self.batch_size = self._set_batch_size(self.train_set, self.batch_size)
         self.num_batches = len(self.train_set) // self.batch_size
         self.nupdate_batches = self.batch_size // self.ubatch_size
         #self.ref_losses_dict = {}
-
+        
+        self.batches = {}
+        self.batch_mol = {}
         for i in range(self.num_batches):
             batch_molecules = self.train_set[self.batch_size * i:self.batch_size * i + self.batch_size]
-            self.batches , self.batch_mol = self._create_batch(batch_molecules, i)
-    
+            self.batches['batch' + str(i)] , self.batch_mol['batch' + str(i)] = self._create_batch(batch_molecules, i)
+        
+        if self.val_set:
+            self.val_batches = {}
+            self.val_batches['batch' + str(0)] = {self.val_set[0][0].viewname[:-4] : {'beads': list(range(0,10))}}
+            self.val_batches['batch' + str(0)][self.val_set[0][0].viewname[:-4]]['native'] = self.val_set[0][1]
+
     def train(self, model, optim):
         print('Starting train')
         
         batch_sinit = {}
+        cln_sinit = {}
+        
+        sim_parameters = {
+        'forcefield': self.forcefield, 
+        'forceterms': self.forceterms, 
+        'replicas': self.replicas, 
+        'temperature': self.temperature, 
+        'cutoff': self.cutoff, 
+        'rfa': self.rfa, 
+        'switch_dist': self.switch_dist, 
+        'exclusions': self.exclusions,
+        'model': model,
+        'device': self.device
+        }
+        
         for epoch in range(1, self.num_epochs + 1):
 
-            ################################# BATCHED SIMULATIONS ##########################################
-            for i in range(self.num_batches):
-                                
-                # If we have built some ensemble, compute the weighted ensemble 
-                ref_sim = True                        
-                if ref_sim:
-                    #print(f'Start {len(batch_molecules)} simulations')
-                    
-                    # Set Sinit coords
-                    batch = self.batch_mol['batch' + str(i)]
-                    batch = self._set_init_coords(batch, batch_sinit, i, epoch)
-                    
-                    # Run reference simulations
-                    states, boxes, self.batches['batch' + str(i)] = self._sample_states(batch, i, model, self.device)
-                    end = time.perf_counter()
-                    batch_sinit['batch' + str(i)] = states[-1]
+            ################################# BATCHED SIMULATIONS ##########################################                               
+            # Run reference simulations
+            states_ids = []
+            sim_workers_factory = SimWorkerSet.create_factory(self.num_batches, simulator_worker_factory, sim_parameters)
+            s = sim_workers_factory(0)
+            remote_workers = s.remote_workers()
+            actor_ids = []
+            
+            ip = ray.get(remote_workers[0].get_node_ip.remote())
+            port = ray.get(remote_workers[0].find_free_port.remote())
+            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+
+            start = time.perf_counter()
+            sim_results = []
+            for i, r in enumerate(remote_workers):
+                # Set init coords
+                batch = self.batch_mol['batch' + str(i)]
+                batch = self._set_init_coords(batch, batch_sinit, i, epoch)
+
+                actor_ids.append((r.simulate.remote(batch, self.max_steps, self.output_period, 
+                                                    self.batches['batch' + str(i)], simulator_worker_factory, gamma=350)))
+            
+            for actor_id in actor_ids:
+                sim_results.append(ray.get(actor_id))                    
                     
             ################################# BATCHED UPDATES ##########################################   
             
             torch.cuda.empty_cache()
             train_losses = []
             ref_losses = []
+            ref_losses_test = []
             ref_losses_dict = {}     
                         
             batch_loss = 0
-            for i in range(self.num_batches):
+            for i, result in enumerate(sim_results):
+                # Sample the states of that batch
+                states = result[0]
+                self.batches['batch' + str(i)] = result[1]
                 
-                # TODO: Here we should selct the simulation batch
-                
-                
+                batch_sinit['batch' + str(i)] = states[-1]
+                                
                 # Get mol lengths, native molecules, names and create batch embeddings
                 mls = [len(self.batches['batch'+str(i)][mol]['beads']) for mol in self.batches['batch'+str(i)]]
                 native_mols = [self.batches['batch'+str(i)][mol]['native'] for mol in self.batches['batch'+str(i)]]
@@ -139,6 +180,7 @@ class Trainer:
                                         U_ext_hat = E_ext, embeddings = uembeddings, batch = ubatch, 
                                         device=self.device, T = self.temperature)
                     
+                    # Update step
                     loss = self._update_step(ensemble, ubatch_native_mols, ubatch_mls, model, optim)
                     torch.cuda.empty_cache()
                     ubatch_loss += loss
@@ -155,6 +197,13 @@ class Trainer:
                 # Compute the total loss 
                 batch_loss += ubatch_loss / self.nupdate_batches
             
+            # Calculate ref loss cln
+            if self.val_set:
+                cln_native = self.val_batches['batch' + str(0)][self.val_set[0][0].viewname[:-4]]['native']
+                ref_losses_test, ref_losses_dict = self._val_rmsd(test_states, i, [cln_native], 
+                                                                 [self.val_set[0][0].viewname[:-4]], [10], 
+                                                                  ref_losses_test, ref_losses_dict
+                                                                 )
             # Train loss of the epoch
             train_losses.append(batch_loss)
             
@@ -165,9 +214,14 @@ class Trainer:
             
             # Save model
             self._save_model(model, train_loss, val_loss, epoch, optim)        
-            
-    def _sample_states(self, batch, batch_idx, model, device):
         
+    def simulator_worker(self, steps, output_period, batch, batch_sinit, batch_info_dict, batch_idx, epoch, model, device):
+        
+        # Set Sinit coords
+        batch = self.batch_mol['batch' + str(i)]
+        batch = self._set_init_coords(batch, batch_sinit, i, epoch)
+        
+        # Create embeddings and the external force
         embeddings = get_embeddings(batch, device, self.replicas)
         external = External(model.model, embeddings, device = device, mode = 'val')
 
@@ -176,7 +230,7 @@ class Trainer:
                                 T = self.temperature, cutoff = self.cutoff, rfa = self.rfa, 
                                 switch_dist = self.switch_dist, exclusions = self.exclusions
                                )    
-        return propagator.forward(2000, 100, self.batches['batch' + str(batch_idx)], gamma = 350)
+        return propagator.forward(steps, output_period, batch_info_dict, gamma = 350)
         
     def _create_batch_input(self, embeddings, batch_size, mol_lengths, device):
         
@@ -213,7 +267,6 @@ class Trainer:
         pml = 0
         batches_info = {}
         batch_mol = {}
-        
         for idx, mol_tuple in enumerate(batch_molecules):
             
             mol = mol_tuple[0]
@@ -225,9 +278,7 @@ class Trainer:
                 mol.dropFrames(keep=0)
                 batch = copy.copy(mol)
                                 
-                batches_info['batch' + str(batch_idx)] = {name: {'beads':  
-                                                                        list(range(pml, pml + ml)),
-                                                                         'native': native_mol}}
+                batches_info[name] =  {'beads':  list(range(pml, pml + ml)), 'native': native_mol}
             else:
                 
                 div = idx // 6
@@ -249,10 +300,11 @@ class Trainer:
                 batch.box = np.array([[0],[0],[0]], dtype = np.float32)
                 batch.dihedrals = np.append(batch.dihedrals, mol.dihedrals + ml, axis=0)
                 
-                batches_info['batch' + str(batch_idx)][name] = {'beads' : list(range(pml, pml + ml))}
-                batches_info['batch' + str(batch_idx)][name]['native'] = native_mol
+                batches_info[name] = {'beads' : list(range(pml, pml + ml))}
+                batches_info[name]['native'] = native_mol
+                
             pml += ml
-        batch_mol['batch' + str(batch_idx)] = batch
+        batch_mol = batch
         
         return batches_info, batch_mol
     
@@ -260,10 +312,9 @@ class Trainer:
         
         
         # If we have built some ensemble, compute the weighted ensemble 
-        w_ensembles = ensemble.compute(model, mls)    
-
-        # BACKWARD PASS through weighted ensemble
-                    
+        w_ensembles = ensemble.compute(model, mls)
+        
+        # BACKWARD PASS through weighted ensemble    
         loss = 0
         for idx, w_e in enumerate(w_ensembles):
             native_mol = native_mols[idx]
@@ -310,9 +361,9 @@ class Trainer:
                                                 ).reshape(batch.numAtoms, 3, self.replicas) 
         return batch
     
-    def _get_mol_names(self):
+    def _get_mol_names(self, mol_set):
         mol_names = []
-        for molecule in self.train_set:
+        for molecule in mol_set:
             name = molecule[0].viewname[:-4]
             mol_names.append(name)
         return mol_names
@@ -323,7 +374,11 @@ class Trainer:
         keys = list(self.keys)
         for mol_name in self.mol_names:
             keys.append(mol_name)
-        keys = tuple(keys)
+        
+        if self.val_names:
+            for mol_name in self.val_names:
+                keys.append(mol_name)
+            keys = tuple(keys)
         
         #Logger
         logs = LogWriter(self.log_dir,keys=keys)
