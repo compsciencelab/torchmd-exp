@@ -31,7 +31,10 @@ class SimWorkerSet(WS):
                  num_workers,
                  index_parent,
                  sim_factory,
-                 sim_params = {},
+                 systems_factory,
+                 systems,
+                 device,
+                 nnp,
                  total_parent_workers=0,
                  worker_remote_config=default_remote_config):
         
@@ -41,9 +44,12 @@ class SimWorkerSet(WS):
 
         self.worker_params = {
             "index_parent": index_parent,
-            "sim_factory": sim_factory
+            "sim_factory": sim_factory,
+            "nnp": nnp,
+            "device": device,
         }
-        self.worker_params.update(sim_params)
+        
+        self.worker_systems, self.workers_info = systems_factory(systems, num_workers)
         
         self.num_workers = num_workers
         super(SimWorkerSet, self).__init__(
@@ -53,12 +59,35 @@ class SimWorkerSet(WS):
             index_parent_worker=index_parent,
             worker_remote_config=self.remote_config,
             total_parent_workers=total_parent_workers)
-                    
+    
+    def add_workers(self, num_workers):
+        
+        """
+        Create and add a number of remote workers to this worker set.
+        Parameters
+        ----------
+        num_workers : int
+            Number of remote workers to create.
+        """
+        
+        cls = self.worker_class.as_remote(**self.remote_config).remote
+        workers = []
+        for i in range(num_workers):
+            system = {'system': self.worker_systems[i]}
+            info = {'worker_info': self.workers_info[i]}
+            self.worker_params.update(system)
+            self.worker_params.update(info)
+            workers.append(self._make_worker(cls, index_worker=i + 1, worker_params=self.worker_params))
+        self._remote_workers.extend(workers)
+
     @classmethod
     def create_factory(cls,
                        num_workers,
                        sim_factory,
-                       sim_params,
+                       systems_factory,
+                       systems,
+                       device,
+                       nnp,
                        total_parent_workers=0,
                        sim_worker_resources=default_remote_config):
         """
@@ -93,7 +122,10 @@ class SimWorkerSet(WS):
                 num_workers=num_workers,
                 index_parent=index_parent,
                 sim_factory=sim_factory,
-                sim_params=sim_params,
+                systems_factory=systems_factory,
+                systems=systems,
+                device=device,
+                nnp=nnp,
                 total_parent_workers=total_parent_workers,
                 worker_remote_config=sim_worker_resources)
 

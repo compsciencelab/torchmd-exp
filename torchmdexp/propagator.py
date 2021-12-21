@@ -21,6 +21,8 @@ class Propagator(torch.nn.Module):
         replicas = 1,
         device='cpu',
         T = 350,
+        langevin_temperature=350,
+        langevin_gamma=0.1,
         cutoff=None,
         rfa=None,
         switch_dist=None,
@@ -35,6 +37,8 @@ class Propagator(torch.nn.Module):
         self.replicas = replicas
         self.device = device
         self.T = T
+        self.langevin_temperature = langevin_temperature
+        self.langevin_gamma = langevin_gamma
         self.cutoff = cutoff
         self.rfa = rfa
         self.switch_dist = switch_dist
@@ -70,7 +74,7 @@ class Propagator(torch.nn.Module):
 
         return system
     
-    def forward(self, steps, output_period, batch_ene, iforces = None, timestep=5, gamma=None):
+    def forward(self, steps, output_period, batch_ene, timestep=5, gamma=None):
     
         """
         Performs a simulation and returns the coordinates at desired times t.
@@ -82,7 +86,9 @@ class Propagator(torch.nn.Module):
         
         
         # Integrator object
-        integrator = Integrator(system, forces, timestep, gamma=gamma, device=self.device, T=self.T)
+        integrator = Integrator(system, forces, timestep, gamma=self.langevin_gamma, 
+                                device=self.device, T=self.langevin_temperature)
+        
         #native_coords = system.pos.clone().detach()
 
         # Iterator and start computing forces
@@ -140,7 +146,7 @@ class Propagator(torch.nn.Module):
         mol_num = 0
         len_rep = 0
         prev_len_rep = 0
-
+        print(names)
         for pair in ava_idx_cut: 
             pair = pair.tolist()
             if set(pair).intersection(set(batch_ene[names[mol_num]]['beads'])): 

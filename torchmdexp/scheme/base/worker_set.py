@@ -74,7 +74,7 @@ class WorkerSet:
         """
         w = cls(index_worker=index_worker, **worker_params)
         return w
-
+    
     def add_workers(self, num_workers):
         """
         Create and add a number of remote workers to this worker set.

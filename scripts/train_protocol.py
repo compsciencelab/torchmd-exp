@@ -1,24 +1,18 @@
 import argparse
-import ray
-import time
 import torch
 from torchmdexp.nn.module import LNNP
-from torchmd.utils import LoadFromFile
-from torchmdnet import datasets, priors, models
-from torchmdnet.models import output_modules
-from torchmdnet.models.utils import rbf_class_mapping, act_class_mapping
+from torchmdexp.nn.trainer import Trainer
 from torchmdexp.nn.utils import load_datasets
-from torchmd.systems import System
-from torchmdexp.nn.utils import get_embeddings, get_native_coords, rmsd
-import numpy as np
-import copy
-from moleculekit.molecule import Molecule
-from torchmd.forcefields.forcefield import ForceField
-from torchmd.forces import Forces
-from torchmd.parameters import Parameters
-from torchmd.integrator import Integrator, maxwell_boltzmann
-from torchmdexp.propagator import Propagator
-
+from torchmd.utils import LoadFromFile
+from torchmdnet.utils import number
+from torchmdnet import datasets, priors, models
+from torchmdnet.data import DataModule
+from torchmdnet.models import output_modules
+from torchmdnet.models.model import create_model, load_model
+from torchmdnet.models.utils import rbf_class_mapping, act_class_mapping
+from torchmdnet.utils import LoadFromCheckpoint, save_argparse, number
+import ray
+import time
 
 def get_args(arguments=None):
     # fmt: off
@@ -27,6 +21,7 @@ def get_args(arguments=None):
     parser.add_argument('--conf', '-c', type=open, action=LoadFromFile, help='Configuration yaml file')  # keep second
     parser.add_argument('--num-epochs', default=300, type=int, help='number of epochs')
     parser.add_argument('--batch-size', default=None, type=int, help='batch size')
+    parser.add_argument('--ubatch-size', default=1, type=int, help= 'update batch size')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--precision', type=int, default=32, choices=[16, 32], help='Floating point precision')
     parser.add_argument('--log-dir', '-l', default='/trainings', help='log file')
@@ -68,6 +63,7 @@ def get_args(arguments=None):
     parser.add_argument('--langevin_gamma',  default=0.1,type=float, help='Langevin relaxation ps^-1')
     parser.add_argument('--langevin_temperature',  default=350,type=float, help='Temperature in K of the thermostat')
     parser.add_argument('--max_steps',type=int,default=2000,help='Total number of simulation steps')
+    parser.add_argument('--output-period',type=int,default=100,help='Pick one state every period')
     parser.add_argument('--neff',type=int,default=0.9,help='Neff threshold')
     parser.add_argument('--last_sn', default = None, help='Select if want to use last sn to start next simulations')
     parser.add_argument('--min_rmsd',type=int,default=1,help='Min rmsd during training')
@@ -99,59 +95,59 @@ if __name__ == "__main__":
     # Start Ray.
     ray.init()
     
-    #resources = ""
-    #for k, v in ray.cluster_resources().items():
-    #    resources += "{} {}, ".format(k, v)
-    #print(resources[:-2], flush=True)
+    resources = ""
+    for k, v in ray.cluster_resources().items():
+        resources += "{} {}, ".format(k, v)
+    print(resources[:-2], flush=True)
 
     gnn = LNNP(args)
     
-    #gnn_serial = ray.put(LNNP(args).model)    
-    #print(gnn_serial)
-    
-    
     
     train_set, val_set = load_datasets(args.data_dir, args.datasets, args.train_set, args.val_set, device = args.device)
-    
-    # Create mol and mol padded
-    mol = train_set[0][0]
-    mol1 = train_set[1][0]
-    mol2 = train_set[2][0]
-    mol3 = train_set[0][0]
-    mols = [mol, mol1, mol2, mol3]
-    
+        
     from torchmdexp.scheme.simulation.s_worker_set import SimWorkerSet
-    from torchmdexp.scheme.simulator_worker_factory import simulator_worker_factory
+    from torchmdexp.samplers.torchmd_sampler import TorchMD_Sampler
+    from torchmdexp.scheme.torchmd_simulator_factory import torchmd_simulator_factory
+    from torchmdexp.scheme.moleculekit_system_factory import moleculekit_system_factory
+    from torchmdexp.scheme.scheme import Scheme
+        
+    # 1. Define the Sampler which performs the simulation and returns the states and energies
     
-    #w = Worker(0)
-    #w.print_worker_info()
-    
-    #w = w.as_remote(num_gpus = 2)
-    #w.print_worker_info()
-    #w.terminate_worker()
-    
-    sim_parameters = {
-        'forcefield': args.forcefield, 
-        'forceterms': args.forceterms, 
-        'replicas': args.replicas, 
-        'temperature': args.temperature, 
-        'cutoff': args.cutoff, 
-        'rfa': args.rfa, 
-        'switch_dist': args.switch_dist, 
-        'exclusions': args.exclusions,
-        'model': gnn,
-        'device': args.device
-    }
-    
-    sim_workers_factory = SimWorkerSet.create_factory(4, simulator_worker_factory, sim_parameters)
-    
-    s = sim_workers_factory(0)
-
-    remote_workers = s.remote_workers()
-    
-    batch_info_dict = {}
+    torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms, device=args.device, 
+                                                             replicas=args.replicas, cutoff=args.cutoff, rfa=args.rfa, switch_dist=args.switch_dist, 
+                                                             exclusions=args.exclusions, timestep=args.timestep,precision=torch.double, 
+                                                             temperature=args.temperature, langevin_temperature=args.langevin_temperature,
+                                                             langevin_gamma=args.langevin_gamma
+                                                            )
     
     
+    # Define Scheme
+    params = {}
+    batch_info_dict = {}    
+    num_systems = len(train_set) // args.batch_size
+    
+    
+    # Add simulation modules
+    params.update({'sim_factory': torchmd_sampler_factory,
+                   'systems_factory': moleculekit_system_factory,
+                   'systems': train_set,
+                   'nnp': gnn,
+                   'device': args.device,
+                   'num_sim_workers': num_systems,
+                   'sym_worker_resources': {'num_cpus': 16, 'num_gpus': 1}
+    })
+    
+    # Start Scheme
+    scheme = Scheme(**params)
+    sim_worker = scheme.update_worker()
+    
+    remote_workers = sim_worker.remote_workers()
+    
+    
+    
+    # Sim remote workers
+    
+    print(remote_workers)
     ip = ray.get(remote_workers[0].get_node_ip.remote())
     port = ray.get(remote_workers[0].find_free_port.remote())
     address = "tcp://{ip}:{port}".format(ip=ip, port=port)
@@ -161,23 +157,20 @@ if __name__ == "__main__":
     #                 for i, worker in enumerate(self.remote_workers)])
     
     actor_ids = []
+    steps = 2000
+    output_period = 100
+    
     start = time.perf_counter()
-    for j in range(3):
-        for i, r in enumerate(remote_workers):
-            actor_ids.append((r.simulate.remote(mols[i], 2000, 100, batch_info_dict, simulator_worker_factory, gamma=350)))
-
-        sim_results = ray.get(actor_ids)
+    for i, r in enumerate(remote_workers):
+        actor_ids.append((r.simulate.remote(steps, output_period)))
+    
+    sim_results = []
+    for ids in actor_ids:
+        sim_results.append(ray.get(ids))
     
     for result in sim_results:
-        states = result[0]
-        batch_info = result[1]
-        print(states.shape)
+        print(result)
     
     end = time.perf_counter()
     print('TIME: ', end-start)
     
-
-    
-    
-    print(dir(s))
-    print(remote_workers)
