@@ -232,8 +232,9 @@ class TorchMD_Sampler(Sampler):
             sample_dict = self._split_dih_E(E_dih, sample_dict)
             sample_dict = self._split_rep_E(E_rep, ava_idx_cut, sample_dict)
 
+        sample_dict = self._split_states(states, sample_dict)
         self.sim_dict.update(sample_dict)
-        
+                
         return self.sim_dict
 
     def set_init_coords(self, init_coords):
@@ -257,7 +258,7 @@ class TorchMD_Sampler(Sampler):
         
         for idx, ml in enumerate(self.mls):
             len_bonds = ml - 1 
-            E_bonds_mol, E_bonds = E_bonds[:len_bonds].sum(), E_bonds[len_bonds:]
+            E_bonds_mol, E_bonds = E_bonds[:len_bonds], E_bonds[len_bonds:]
             sample_dict['system' + str(idx)]['E_prior'] += E_bonds_mol.sum()
         
         return sample_dict
@@ -298,4 +299,15 @@ class TorchMD_Sampler(Sampler):
                 mol_num += 1
                 
         sample_dict['system' + str(mol_num)]['E_prior'] += E_rep.sum()
+        return sample_dict
+    
+    def _split_states(self, states, sample_dict):
+        """
+        Split the states tensor and adds the coordinates of each molecule to the sample_dict
+        """
+        for idx, ml in enumerate(self.mls):
+            states_mol, states = states[:, :ml, :], states[:, ml:, :]
+            sample_dict['system' + str(idx)]['states'] = states_mol
+            print(ml)
+            print(states_mol.shape)
         return sample_dict
