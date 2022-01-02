@@ -112,9 +112,12 @@ def main():
             learner.step()
 
             val_rmsd = learner.get_val_loss()
-            if val_rmsd < 1:
+            if val_rmsd < 10:
                 inc_diff = True
-
+            
+            if level == (levels-1) and val_rmsd < 1.5:
+                learner.save_model()
+        
 
 def get_args(arguments=None):
     # fmt: off

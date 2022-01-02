@@ -40,7 +40,6 @@ class SimWorker(Worker):
         
     def save_model(self, path):
         torch.save({
-                'epoch': epoch,
                 'state_dict': self.nnp.model.state_dict(),
                 'hyper_parameters': self.nnp.hparams,
                 }, path)
