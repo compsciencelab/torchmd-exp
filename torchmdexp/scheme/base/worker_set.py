@@ -49,7 +49,21 @@ class WorkerSet:
         if add_local_worker:
             local_params = worker_params.copy()
             local_params.update(
-                {"device": local_device, "initial_weights": initial_weights})
+                {"device": local_device})
+            
+            if worker.__name__ == "SimWorker" and num_workers == 1:
+                self.num_workers = 0
+                local_params.update(
+                    {'system': self.worker_systems[0],
+                     'worker_info': self.workers_info[0]})
+                        
+            elif worker.__name__ == "WeightedEnsembleWorker" and num_workers == 1:
+                self.num_workers = 0
+            
+            self._local_worker = self._make_worker(
+                self.worker_class, index_worker = 0,
+                worker_params = local_params)
+            
         else:
             self._local_worker = None
             
@@ -89,6 +103,10 @@ class WorkerSet:
             self._make_worker(cls, index_worker=i + 1, worker_params=self.worker_params)
             for i in range(num_workers)])
 
+    def local_worker(self):
+        """ Return local worker """
+        return self._local_worker
+    
     def remote_workers(self):
         """Returns list of remote workers"""
         return self._remote_workers

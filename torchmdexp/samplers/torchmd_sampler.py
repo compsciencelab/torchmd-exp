@@ -1,4 +1,5 @@
 from .base import Sampler
+from .utils import get_embeddings, get_native_coords
 import torch
 from torchmd.forcefields.forcefield import ForceField
 from torchmd.forces import Forces
@@ -6,8 +7,10 @@ from torchmd.integrator import Integrator, maxwell_boltzmann
 from torchmd.parameters import Parameters
 from torchmd.systems import System
 from torchmdexp.nn.calculator import External
-from torchmdexp.utils import get_embeddings
 import collections
+import itertools
+from torchmdexp.utils.get_native_coords import get_native_coords
+import numpy as np
 import copy
 
 class TorchMD_Sampler(Sampler):
@@ -66,10 +69,11 @@ class TorchMD_Sampler(Sampler):
     def __init__(self,
                  mol,
                  nnp,
+                 device,
                  mls,
+                 ground_truth,
                  forcefield, 
                  forceterms,
-                 device, 
                  replicas, 
                  cutoff, 
                  rfa, 
@@ -84,38 +88,53 @@ class TorchMD_Sampler(Sampler):
         
         self.precision = precision
         self.mls = mls
+        self.temperature = temperature
+        self.replicas = replicas
+        self.init_coords = mol.coords
+        
+        # ------------------- Neural Network Potential -----------------------------
+        self.nnp = nnp
+                
+        # ------------------- Set the ground truth list (PDB coordinates) -----------
+        self.ground_truth = ground_truth
         
         # Create the dictionary used to return states and prior energies
         self.sim_dict = collections.defaultdict(dict)
         for idx , ml in enumerate(mls):
             self.sim_dict['system' + str(idx)]['states'] = None
-            self.sim_dict['system' + str(idx)]['E_prior'] = 0
-        
+            self.sim_dict['system' + str(idx)]['U_prior'] = 0
+            
         
         # Create embeddings and the external force
         embeddings = get_embeddings(mol, device, replicas)
         external = External(nnp, embeddings, device = device, mode = 'val')
-
+        
+        # Add the embeddings to the sim_dict
+        my_e = embeddings 
+        for idx, ml in enumerate(mls):
+            mol_embeddings, my_e = my_e[:, :ml], my_e[:, ml:]
+            self.sim_dict['system' + str(idx)]['embeddings'] = mol_embeddings
+            
         # Create forces
         ff = ForceField.create(mol,forcefield)
         parameters = Parameters(ff, mol, terms=forceterms, device=device) 
-        forces = Forces(parameters,terms=forceterms, external=external, cutoff=cutoff, 
+        self.forces = Forces(parameters,terms=forceterms, external=external, cutoff=cutoff, 
                              rfa=rfa, switch_dist=switch_dist, exclusions = exclusions
                         )
         
-        system = System(mol.numAtoms, nreplicas=replicas, precision = precision, device=device)
+        # Create the system
+        system = System(mol.numAtoms, nreplicas=self.replicas, precision = precision, device=device)
         system.set_positions(mol.coords)
         system.set_box(mol.box)
-        system.set_velocities(maxwell_boltzmann(forces.par.masses, T=temperature, replicas=replicas))
-
-        self.integrator = Integrator(system, forces, timestep, gamma = langevin_gamma, 
+        system.set_velocities(maxwell_boltzmann(self.forces.par.masses, T=self.temperature, replicas=self.replicas))
+        
+        self.integrator = Integrator(system, self.forces, timestep, gamma = langevin_gamma, 
                                 device = device, T= langevin_temperature)
         
     @classmethod
     def create_factory(cls,
                        forcefield, 
                        forceterms,
-                       device, 
                        replicas, 
                        cutoff, 
                        rfa, 
@@ -165,23 +184,24 @@ class TorchMD_Sampler(Sampler):
             creates a new TorchMD_Sampler instance.
         """
 
-        def create_sampler_instance(mol, nnp, worker_info):
+        def create_sampler_instance(mol, nnp, device, mls, ground_truth):
             return cls(mol,
                        nnp,
-                       worker_info, # molecule lengths
+                       device,
+                       mls, # molecule lengths
+                       ground_truth,
                        forcefield, 
                        forceterms,
-                       device, 
                        replicas, 
                        cutoff, 
                        rfa, 
                        switch_dist, 
                        exclusions,
-                       timestep=1,
-                       precision=torch.double,
-                       temperature=350,
-                       langevin_temperature=350,
-                       langevin_gamma=0.1)
+                       timestep,
+                       precision,
+                       temperature,
+                       langevin_temperature,
+                       langevin_gamma)
         
         return create_sampler_instance
 
@@ -207,7 +227,9 @@ class TorchMD_Sampler(Sampler):
             
         # Iterator and start computing forces
         iterator = range(1,int(steps/output_period)+1)
-
+        self.integrator.systems.set_positions(self.init_coords)
+        self.integrator.systems.set_velocities(maxwell_boltzmann(self.forces.par.masses, T=self.temperature, replicas=self.replicas))
+        
         # Define the states
         nstates = int(steps // output_period)
         states = torch.zeros(nstates, len(self.integrator.systems.pos[0]), 3, device = "cpu",
@@ -215,6 +237,7 @@ class TorchMD_Sampler(Sampler):
 
         # Create dict to collect states and energies
         sample_dict = copy.deepcopy(self.sim_dict)
+        
         
         # Run the simulation
         for i in iterator:
@@ -237,7 +260,7 @@ class TorchMD_Sampler(Sampler):
                 
         return self.sim_dict
 
-    def set_init_coords(self, init_coords):
+    def set_init_state(self, init_coords):
         """
         Changes the initial coordinates of the system.
         
@@ -248,7 +271,14 @@ class TorchMD_Sampler(Sampler):
                 Size = 
         """
             
-        self.integrator.system.set_positions(init_coords)
+        self.init_coords = init_coords
+    
+    def set_weights(self, weights):
+        self.nnp.load_state_dict(weights)
+    
+    def get_ground_truth(self, gt_idx):
+        return self.ground_truth[gt_idx]
+    
     
     def _split_bonds_E(self, E_bonds, sample_dict):
         """
@@ -259,7 +289,7 @@ class TorchMD_Sampler(Sampler):
         for idx, ml in enumerate(self.mls):
             len_bonds = ml - 1 
             E_bonds_mol, E_bonds = E_bonds[:len_bonds], E_bonds[len_bonds:]
-            sample_dict['system' + str(idx)]['E_prior'] += E_bonds_mol.sum()
+            sample_dict['system' + str(idx)]['U_prior'] += E_bonds_mol.sum()
         
         return sample_dict
     
@@ -272,7 +302,7 @@ class TorchMD_Sampler(Sampler):
         for idx, ml in enumerate(self.mls):
             len_dihedrals = ml - 3
             E_dih_mol, E_dih = E_dih[:len_dihedrals], E_dih[len_dihedrals:]
-            sample_dict['system' + str(idx)]['E_prior'] += E_dih_mol.sum()
+            sample_dict['system' + str(idx)]['U_prior'] += E_dih_mol.sum()
         
         return sample_dict
 
@@ -293,12 +323,12 @@ class TorchMD_Sampler(Sampler):
             else:
                 len_rep += 1
                 E_rep_mol, E_rep = E_rep[:len_rep], E_rep[len_rep:]
-                sample_dict['system' + str(mol_num)]['E_prior'] += E_rep_mol.sum()
+                sample_dict['system' + str(mol_num)]['U_prior'] += E_rep_mol.sum()
                 len_rep = 0
                 prev_ml += self.mls[mol_num]
                 mol_num += 1
                 
-        sample_dict['system' + str(mol_num)]['E_prior'] += E_rep.sum()
+        sample_dict['system' + str(mol_num)]['U_prior'] += E_rep.sum()
         return sample_dict
     
     def _split_states(self, states, sample_dict):
@@ -308,6 +338,59 @@ class TorchMD_Sampler(Sampler):
         for idx, ml in enumerate(self.mls):
             states_mol, states = states[:, :ml, :], states[:, ml:, :]
             sample_dict['system' + str(idx)]['states'] = states_mol
-            print(ml)
-            print(states_mol.shape)
         return sample_dict
+    
+    
+def moleculekit_system_factory(molecules, num_workers):
+
+    prev_div = 0 
+    axis = 0
+    move = np.array([0, 0, 0,])
+    
+    batch_size = len(molecules) // num_workers
+    systems = []
+    worker_info = []
+    for i in range(num_workers):
+        batch_molecules, molecules = molecules[:batch_size], molecules[batch_size:]
+        batch_mls = []
+        batch_gt = [] 
+        
+        for idx, mol_tuple in enumerate(batch_molecules):
+
+            mol = mol_tuple[0]
+            native_mol = mol_tuple[1]
+            native_coords = get_native_coords(native_mol)
+            name = native_mol.viewname[:-4]
+            ml = len(mol.coords)
+
+            if idx == 0:
+                mol.dropFrames(keep=0)
+                batch = copy.copy(mol)
+
+            else:
+                div = idx // 6
+                if div != prev_div:
+                    prev_div = div
+                    axis = 0
+                if idx % 2 == 0:
+                    move[axis] = 1000 + 1000 * div
+                else:
+                    move[axis] = -1000 + -1000 * div
+                    axis += 1
+
+                mol.dropFrames(keep=0)
+
+                mol.moveBy(move)
+                move = np.array([0, 0, 0])
+
+                batch.append(mol) # join molecules 
+                batch.box = np.array([[0],[0],[0]], dtype = np.float32)
+                batch.dihedrals = np.append(batch.dihedrals, mol.dihedrals + ml, axis=0)
+            batch_mls.append(ml)
+            batch_gt.append(native_coords)
+            
+        systems.append(batch)
+        info = {'mls': batch_mls, 'ground_truth': batch_gt}
+        worker_info.append(info)
+        
+    return systems, worker_info

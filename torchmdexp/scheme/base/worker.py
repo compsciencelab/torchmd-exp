@@ -30,7 +30,7 @@ class Worker:
     
     def __init__(self, index_worker):
         self.index_worker = index_worker
-        self.actor = None # Initialize in inherited class
+        self.nnp = None # Initialize in inherited class
         
     @classmethod
     def as_remote(cls,
@@ -76,6 +76,10 @@ class Worker:
                 ray._private.services.get_node_ip_address(),
                 ray.get_gpu_ids())
         logger.warning(s)
+        
+    def get_weights(self):
+        """Returns current actor.state_dict() weights"""
+        return {k: v.cpu() for k, v in self.nnp.state_dict().items()}
 
     def terminate_worker(self):
         """Terminate this ray actor"""

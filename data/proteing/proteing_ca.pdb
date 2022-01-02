@@ -1,0 +1,115 @@
+MODEL        1
+ATOM      1  CA  ASP     6       2.000   1.890   4.920  0.00  0.00      P    H  
+ATOM      2  CA  THR     7       3.310   5.040   3.310  0.00  0.00      P    H  
+ATOM      3  CA  TYR     8       4.910   7.370   5.880  0.00  0.00      P    H  
+ATOM      4  CA  LYS     9       5.800  11.010   5.450  0.00  0.00      P    H  
+ATOM      5  CA  LEU    10       8.280  13.410   6.880  0.00  0.00      P    H  
+ATOM      6  CA  VAL    11       7.500  17.180   6.760  0.00  0.00      P    H  
+ATOM      7  CA  ILE    12      10.270  19.730   7.540  0.00  0.00      P    H  
+ATOM      8  CA  VAL    13       9.110  23.300   7.830  0.00  0.00      P    H  
+ATOM      9  CA  LEU    14      11.860  25.930   7.490  0.00  0.00      P    H  
+ATOM     10  CA  ASN    15      11.350  29.680   6.750  0.00  0.00      P    H  
+ATOM     11  CA  GLY    16       8.260  29.720   4.500  0.00  0.00      P    H  
+ATOM     12  CA  THR    17       9.620  26.630   2.590  0.00  0.00      P    H  
+ATOM     13  CA  THR    18       8.510  23.100   3.330  0.00  0.00      P    H  
+ATOM     14  CA  PHE    19      10.280  19.880   2.350  0.00  0.00      P    H  
+ATOM     15  CA  THR    20       8.470  16.500   2.480  0.00  0.00      P    H  
+ATOM     16  CA  TYR    21       9.790  13.010   1.930  0.00  0.00      P    H  
+ATOM     17  CA  THR    22       7.310  10.080   1.820  0.00  0.00      P    H  
+ATOM     18  CA  THR    23       8.260   6.400   1.940  0.00  0.00      P    H  
+ATOM     19  CA  GLU    24       6.980   2.900   2.560  0.00  0.00      P    H  
+ATOM     20  CA  ALA    25       7.860   1.280   5.920  0.00  0.00      P    H  
+ATOM     21  CA  VAL    26       6.810  -1.810   7.880  0.00  0.00      P    H  
+ATOM     22  CA  ASP    27       5.830   0.400  10.850  0.00  0.00      P    H  
+ATOM     23  CA  ALA    28       6.040   3.870  12.380  0.00  0.00      P    H  
+ATOM     24  CA  ALA    29       9.020   2.970  14.620  0.00  0.00      P    H  
+ATOM     25  CA  THR    30      10.790   1.920  11.380  0.00  0.00      P    H  
+ATOM     26  CA  ALA    31       9.870   5.030   9.320  0.00  0.00      P    H  
+ATOM     27  CA  GLU    32      11.110   7.200  12.290  0.00  0.00      P    H  
+ATOM     28  CA  LYS    33      14.460   5.380  12.160  0.00  0.00      P    H  
+ATOM     29  CA  VAL    34      14.820   6.170   8.430  0.00  0.00      P    H  
+ATOM     30  CA  PHE    35      13.650   9.760   8.680  0.00  0.00      P    H  
+ATOM     31  CA  LYS    36      15.870  10.700  11.670  0.00  0.00      P    H  
+ATOM     32  CA  GLN    37      18.810   9.200   9.750  0.00  0.00      P    H  
+ATOM     33  CA  TYR    38      17.900  11.410   6.690  0.00  0.00      P    H  
+ATOM     34  CA  ALA    39      17.360  14.530   8.750  0.00  0.00      P    H  
+ATOM     35  CA  ASN    40      20.700  14.380  10.540  0.00  0.00      P    H  
+ATOM     36  CA  ASP    41      22.450  13.630   7.250  0.00  0.00      P    H  
+ATOM     37  CA  ALA    42      21.000  16.930   5.910  0.00  0.00      P    H  
+ATOM     38  CA  GLY    43      21.380  19.760   8.400  0.00  0.00      P    H  
+ATOM     39  CA  VAL    44      18.090  19.130  10.260  0.00  0.00      P    H  
+ATOM     40  CA  ASP    45      17.900  19.470  14.010  0.00  0.00      P    H  
+ATOM     41  CA  GLY    46      14.480  20.230  15.360  0.00  0.00      P    H  
+ATOM     42  CA  GLU    47      11.400  19.380  17.300  0.00  0.00      P    H  
+ATOM     43  CA  TRP    48       9.510  16.310  16.070  0.00  0.00      P    H  
+ATOM     44  CA  THR    49       5.870  15.280  16.400  0.00  0.00      P    H  
+ATOM     45  CA  TYR    50       4.100  12.290  14.940  0.00  0.00      P    H  
+ATOM     46  CA  ASP    51       0.460  12.030  13.870  0.00  0.00      P    H  
+ATOM     47  CA  ALA    52      -0.700   8.410  13.470  0.00  0.00      P    H  
+ATOM     48  CA  ALA    53      -3.960   9.360  11.710  0.00  0.00      P    H  
+ATOM     49  CA  THR    54      -1.860  10.670   8.770  0.00  0.00      P    H  
+ATOM     50  CA  LYS    55       1.330   8.630   9.420  0.00  0.00      P    H  
+ATOM     51  CA  THR    56       3.260  11.940   9.260  0.00  0.00      P    H  
+ATOM     52  CA  PHE    57       6.300  13.140  11.180  0.00  0.00      P    H  
+ATOM     53  CA  THR    58       6.570  16.950  11.360  0.00  0.00      P    H  
+ATOM     54  CA  VAL    59       9.810  18.740  12.190  0.00  0.00      P    H  
+ATOM     55  CA  THR    60      10.170  22.420  12.790  0.00  0.00      P    H  
+ATOM     56  CA  GLU    61      12.990  24.910  12.900  0.00  0.00      P    H  
+CONECT    1    2
+CONECT    2    1    3
+CONECT    3    2    4
+CONECT    4    3    5
+CONECT    5    4    6
+CONECT    6    5    7
+CONECT    7    6    8
+CONECT    8    7    9
+CONECT    9    8   10
+CONECT   10    9   11
+CONECT   11   10   12
+CONECT   12   11   13
+CONECT   13   12   14
+CONECT   14   13   15
+CONECT   15   14   16
+CONECT   16   15   17
+CONECT   17   16   18
+CONECT   18   17   19
+CONECT   19   18   20
+CONECT   20   19   21
+CONECT   21   20   22
+CONECT   22   21   23
+CONECT   23   22   24
+CONECT   24   23   25
+CONECT   25   24   26
+CONECT   26   25   27
+CONECT   27   26   28
+CONECT   28   27   29
+CONECT   29   28   30
+CONECT   30   29   31
+CONECT   31   30   32
+CONECT   32   31   33
+CONECT   33   32   34
+CONECT   34   33   35
+CONECT   35   34   36
+CONECT   36   35   37
+CONECT   37   36   38
+CONECT   38   37   39
+CONECT   39   38   40
+CONECT   40   39   41
+CONECT   41   40   42
+CONECT   42   41   43
+CONECT   43   42   44
+CONECT   44   43   45
+CONECT   45   44   46
+CONECT   46   45   47
+CONECT   47   46   48
+CONECT   48   47   49
+CONECT   49   48   50
+CONECT   50   49   51
+CONECT   51   50   52
+CONECT   52   51   53
+CONECT   53   52   54
+CONECT   54   53   55
+CONECT   55   54   56
+CONECT   56   55
+ENDMDL
+END

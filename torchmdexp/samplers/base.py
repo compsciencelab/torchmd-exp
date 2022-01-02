@@ -11,6 +11,11 @@ class Sampler(ABC):
         raise NotImplementedError
     
     @abstractmethod
+    def set_init_state(self, init_coords):
+        """ Changes the init state of the system """
+        raise NotImplementedError
+    
+    @abstractmethod
     def simulate(self, steps, output_period):
         """
         Simulation method

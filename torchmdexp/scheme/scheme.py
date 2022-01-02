@@ -1,4 +1,6 @@
 from torchmdexp.scheme.simulation.s_worker_set import SimWorkerSet
+from torchmdexp.scheme.weighted_ensemble.we_worker_set import WeightedEnsembleWorkerSet
+from torchmdexp.scheme.update.u_worker import UWorker
 
 class Scheme:
     """
@@ -38,20 +40,31 @@ class Scheme:
     """
     def __init__(self,
 
-                 # simulation
+                 # core
                  sim_factory,
                  systems_factory,
                  systems,
                  nnp,
                  device,
-                 num_sim_workers = 1,
-                 sym_worker_resources={"num_gpus": 1},
-                 # reweighting 
+                 weighted_ensemble_factory,
+                 loss_fn,
                  
+                 # simulation
+                 num_sim_workers = 1,
+                 sim_worker_resources={"num_gpus": 1},
+                 
+                 # reweighting 
+                 num_we_workers = 1,
+                 worker_info = {},
+                 we_worker_resources = {"num_gpus": 1},
+                 
+                 # update
+                 local_device=None
                  ):
 
         sim_execution="parallelised" if num_sim_workers > 1 else "centralised"
-        #reweighting_execution ="parallelised" if num_reweight_workers > 1 else "centralised"
+        
+        reweighting_execution ="parallelised" if num_we_workers > 1 else "centralised"
 
         sim_workers_factory = SimWorkerSet.create_factory(num_workers=num_sim_workers, 
                                                           sim_factory=sim_factory, 
@@ -59,9 +72,23 @@ class Scheme:
                                                           systems=systems,
                                                           device=device,
                                                           nnp=nnp,
-                                                          sim_worker_resources=sym_worker_resources)
+                                                          sim_worker_resources=sim_worker_resources)
         
-        self._update_worker = sim_workers_factory(0)
+        we_workers_factory = WeightedEnsembleWorkerSet.create_factory(num_workers=num_we_workers,
+                                                                      weighted_ensemble_factory=weighted_ensemble_factory,
+                                                                      nnp = nnp,
+                                                                      worker_info=worker_info,
+                                                                      we_worker_resources=we_worker_resources)
+        
+        self._update_worker = UWorker(
+
+            sim_workers_factory = sim_workers_factory,
+            we_workers_factory = we_workers_factory,
+            loss_fn = loss_fn,
+            sim_execution = sim_execution,
+            reweighting_execution = reweighting_execution,
+            local_device=local_device
+        )
         
 
     def update_worker(self):
