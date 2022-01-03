@@ -5,6 +5,7 @@ from ..base.worker import default_remote_config
 class WeightedEnsembleWorkerSet(WS):
     
     def __init__(self,
+                 local_device,
                  num_workers,
                  index_parent,
                  weighted_ensemble_factory,
@@ -29,6 +30,7 @@ class WeightedEnsembleWorkerSet(WS):
         
         super(WeightedEnsembleWorkerSet, self).__init__(
             worker=self.worker_class,
+            local_device=local_device,
             num_workers=self.num_workers,
             worker_params=self.worker_params,
             index_parent_worker=index_parent,
@@ -59,7 +61,7 @@ class WeightedEnsembleWorkerSet(WS):
             creates a new SimWorkerSet class instance.
         """
 
-        def weighted_ensemble_worker_set_factory(index_parent):
+        def weighted_ensemble_worker_set_factory(device, index_parent):
             """
             Creates and returns a CWorkerSet class instance.
             Parameters
@@ -72,6 +74,7 @@ class WeightedEnsembleWorkerSet(WS):
                 A new CWorkerSet class instance.
             """
             return cls(
+                local_device=device,
                 num_workers=num_workers,
                 index_parent=index_parent,
                 weighted_ensemble_factory=weighted_ensemble_factory,

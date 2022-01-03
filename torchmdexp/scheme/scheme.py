@@ -65,7 +65,7 @@ class Scheme:
         sim_execution="parallelised" if num_sim_workers > 1 else "centralised"
         
         reweighting_execution ="parallelised" if num_we_workers > 1 else "centralised"
-
+        
         sim_workers_factory = SimWorkerSet.create_factory(num_workers=num_sim_workers, 
                                                           sim_factory=sim_factory, 
                                                           systems_factory=systems_factory, 

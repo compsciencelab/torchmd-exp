@@ -6,7 +6,6 @@ from torchmdexp.scheme.scheme import Scheme
 from torchmdexp.weighted_ensembles.weighted_ensemble import WeightedEnsemble
 from torchmdexp.learner import Learner
 from torchmdexp.nnp.module import LNNP
-from torchmdexp.utils.load_datasets import load_datasets
 from torchmdexp.losses.rmsd import rmsd
 from torchmd.utils import LoadFromFile
 from torchmdnet import datasets, priors, models
@@ -16,6 +15,7 @@ from torchmdnet.utils import LoadFromCheckpoint, save_argparse, number
 import ray
 from moleculekit.molecule import Molecule
 import numpy as np
+from torchmdexp.datasets.proteinfactory import ProteinFactory
 
 
 
@@ -42,8 +42,10 @@ def main():
     optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
 
     # Load training molecules
-    train_set, val_set = load_datasets(args.data_dir, args.datasets, args.train_set, args.val_set, device = args.device)            
-
+    protein_factory = ProteinFactory(args.datasets, args.train_set)
+    protein_factory.set_ground_truth(args.reference_dir)
+    train_ground_truth = protein_factory.get_ground_truth()
+    
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
                                                              replicas=args.replicas, cutoff=args.cutoff, rfa=args.rfa,
@@ -64,7 +66,7 @@ def main():
     # Core
     params.update({'sim_factory': torchmd_sampler_factory,
                    'systems_factory': moleculekit_system_factory,
-                   'systems': train_set,
+                   'systems': train_ground_truth,
                    'nnp': nnp,
                    'device': args.device,
                    'weighted_ensemble_factory': weighted_ensemble_factory,
@@ -93,17 +95,18 @@ def main():
     # 4. Define Learner
     learner = Learner(scheme, steps, output_period, log_dir=args.log_dir, keys = ('level', 'steps', 'Train loss', 'Val loss'))    
 
-    # Load curriculum coordinates
-    mol_curriculum = Molecule('/workspace7/torchmd-AD/train_curriculum/cln/psf/chignolin_cln025.psf')
-    mol_curriculum.read('/workspace7/torchmd-AD/train_curriculum/cln/xtc/chignolin_cln025.xtc')
-
-    # Define epoch and number of levels
+    
+    # 5. Define epoch and  Levels
     epoch = 0
-    levels = mol_curriculum.numFrames
+    protein_factory.set_levels(args.levels_dir)
+    
+    num_levels = protein_factory.get_num_levels()
 
-    for level in range(levels):
-
-        init_coords = mol_curriculum.coords[:, :, np.array([level])]
+    # 6. Train
+    for level in range(num_levels):
+        
+        mol_curriculum = protein_factory.get_level(level)[0] # FOR NOW LEAVE IT LIKE THIS FOR SIMPLICITY
+        init_coords = mol_curriculum.coords
         learner.level_up(init_coords)
         inc_diff = False
 
@@ -112,10 +115,10 @@ def main():
             learner.step()
 
             val_rmsd = learner.get_val_loss()
-            if val_rmsd < 10:
+            if val_rmsd < 1:
                 inc_diff = True
             
-            if level == (levels-1) and val_rmsd < 1.5:
+            if level == (num_levels-1) and val_rmsd < 1.5:
                 learner.save_model()
         
 
@@ -148,7 +151,8 @@ def get_args(arguments=None):
     parser.add_argument('--neighbor-embedding', type=bool, default=False, help='If a neighbor embedding should be applied before interactions')
     
     # dataset specific
-    parser.add_argument('--data_dir', default=None, help='Input directory')
+    parser.add_argument('--reference_dir', default=None, help='Directory with reference data')
+    parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
     parser.add_argument('--datasets', default='/shared/carles/repo/torchmd-exp/datasets', type=str, 
                         help='Directory with the files with the names of train and val proteins')
     

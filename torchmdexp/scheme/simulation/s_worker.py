@@ -19,10 +19,10 @@ class SimWorker(Worker):
         
         # Computation device
         dev = device or "cuda" if torch.cuda.is_available() else "cpu"
-
+        
         # Create Propagator instance
         self.simulator = sim_factory(system, nnp, dev, **worker_info)
-        
+
         # Print worker information
         self.print_worker_info()
         

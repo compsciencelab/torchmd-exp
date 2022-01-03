@@ -30,7 +30,7 @@ class WeightedEnsemble:
         # ------------------- Neural Network Potential and Optimizer -----------------
         self.nnp = nnp
         self.optimizer = torch.optim.Adam(self.nnp.model.parameters(), lr=lr)
-        
+
         # ------------------- Loss ----------------------------------
         self.loss = 0
         
@@ -128,7 +128,6 @@ class WeightedEnsemble:
         w_ensemble = torch.multiply(weights.unsqueeze(1).unsqueeze(1), states).sum(0) 
         
         return w_ensemble
-    
     
     def compute_loss(self, ground_truth, states, embeddings, U_prior):
         

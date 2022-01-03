@@ -36,7 +36,7 @@ class UWorker(Worker):
         self.num_workers = len(self.sim_workers.remote_workers())
         
         # Reweighting Workers
-        self.weighted_ensemble_workers = we_workers_factory(index_worker)
+        self.weighted_ensemble_workers = we_workers_factory(dev, index_worker)
         self.local_we_worker = self.weighted_ensemble_workers.local_worker()
     
     def step(self, steps, output_period):

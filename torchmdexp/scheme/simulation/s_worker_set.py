@@ -28,6 +28,7 @@ class SimWorkerSet(WS):
     """
     
     def __init__(self,
+                 local_device,
                  num_workers,
                  index_parent,
                  sim_factory,
@@ -54,6 +55,7 @@ class SimWorkerSet(WS):
         self.num_workers = num_workers
         super(SimWorkerSet, self).__init__(
             worker=self.worker_class,
+            local_device=local_device,
             num_workers=self.num_workers,
             worker_params=self.worker_params,
             index_parent_worker=index_parent,
@@ -119,6 +121,7 @@ class SimWorkerSet(WS):
                 A new CWorkerSet class instance.
             """
             return cls(
+                local_device=device,
                 num_workers=num_workers,
                 index_parent=index_parent,
                 sim_factory=sim_factory,

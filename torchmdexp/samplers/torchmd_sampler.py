@@ -94,7 +94,7 @@ class TorchMD_Sampler(Sampler):
         
         # ------------------- Neural Network Potential -----------------------------
         self.nnp = nnp
-                
+
         # ------------------- Set the ground truth list (PDB coordinates) -----------
         self.ground_truth = ground_truth
         
@@ -350,17 +350,16 @@ def moleculekit_system_factory(molecules, num_workers):
     batch_size = len(molecules) // num_workers
     systems = []
     worker_info = []
+    
     for i in range(num_workers):
         batch_molecules, molecules = molecules[:batch_size], molecules[batch_size:]
         batch_mls = []
         batch_gt = [] 
         
-        for idx, mol_tuple in enumerate(batch_molecules):
+        for idx, mol in enumerate(batch_molecules):
 
-            mol = mol_tuple[0]
-            native_mol = mol_tuple[1]
-            native_coords = get_native_coords(native_mol)
-            name = native_mol.viewname[:-4]
+            native_coords = get_native_coords(mol)
+            name = mol.viewname[:-4]
             ml = len(mol.coords)
 
             if idx == 0:
