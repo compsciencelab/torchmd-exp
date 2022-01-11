@@ -44,18 +44,33 @@ class Learner:
         # Update logger and write results
         self.train_loss = info['train_loss']
         self.val_loss = info['val_loss']
+        native_upot = info['native_U']
         
         if self.logger:
             results_dict = {'level':self.level, 'steps': self.steps,
-                            'Train loss': self.train_loss, 'Val loss': self.val_loss}
+                            'Train loss': self.train_loss, 'Val loss': self.val_loss,
+                           'Native Upot': native_upot}
+            
             self.logger.write_row(results_dict)
 
-    def level_up(self, next_level):
+    def level_up(self):
         """ Increases level of difficulty """
         
-        self.update_worker.set_init_state(next_level)
+        #self.update_worker.set_init_state(next_level)
         self.level += 1
-        
+    
+    def set_init_state(self, init_state):
+        """ Change init state """
+        self.update_worker.set_init_state(init_state)
+    
+    def set_steps(self, steps):
+        """ Change number of simulation steps """
+        self.steps = steps
+    
+    def set_output_period(self, output_period):
+        """ Change output_period """
+        self.output_period = output_period
+    
     def save_model(self):
         
         path = path = f'{self.log_dir}/epoch={self.epoch}-train_loss={self.train_loss:.4f}-val_loss={self.val_loss:.4f}.ckpt'
@@ -63,3 +78,6 @@ class Learner:
     
     def get_val_loss(self):
         return self.val_loss
+    
+    def set_lr(self, lr):
+        self.update_worker.set_lr(lr)

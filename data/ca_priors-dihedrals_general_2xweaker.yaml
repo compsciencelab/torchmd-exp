@@ -19,7 +19,6 @@ atomtypes:
 - CAV
 - CAW
 - CAY
-- MAG
 bonds:
   (CAA, CAA):
     k0: 61.07861024450872

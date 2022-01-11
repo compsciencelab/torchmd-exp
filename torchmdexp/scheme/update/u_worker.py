@@ -62,7 +62,10 @@ class UWorker(Worker):
                 
                 # Compute Val Loss
                 info['val_loss'] = self.local_we_worker.compute_val_loss(ground_truth=gt, **system_result)
-                                
+                
+                # Compute Native Energy
+                info['native_U'] = self.local_we_worker.get_native_U(ground_truth=gt, embeddings=system_result['embeddings'])
+                
                 # Set weights
                 weights = self.local_we_worker.get_weights()
                 self.local_worker.set_weights(weights)
@@ -79,3 +82,6 @@ class UWorker(Worker):
     def save_model(self, path):
         
         self.local_worker.save_model(path)
+    
+    def set_lr(self, lr):
+        self.local_we_worker.set_lr(lr)

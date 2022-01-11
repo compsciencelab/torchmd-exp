@@ -81,7 +81,7 @@ class WeightedEnsemble:
         
         # Prepare pos, embeddings and batch tensors
         pos = states.to(self.device).type(torch.float32).reshape(-1, 3)
-        embeddings = embeddings.repeat(self.nstates , 1)
+        embeddings = embeddings.repeat(states.shape[0] , 1)
         batch = torch.arange(embeddings.size(0), device=self.device).repeat_interleave(
             embeddings.size(1)
         )
@@ -145,14 +145,25 @@ class WeightedEnsemble:
     
     def compute_val_loss(self, ground_truth, states, **kwargs):
         
-        last_state = True
-        if last_state:
+        n_states = 'last10'
+        if n_states == 'last':
             val_rmsd = self.loss_fn(ground_truth, states[-1]).item()
+        elif n_states == 'last10':
+            val_rmsd = mean([self.loss_fn(ground_truth, state).item() for state in states[-10:]])
         else:
             val_rmsd = mean([self.loss_fn(ground_truth, state).item() for state in states])
+        
         return val_rmsd
         
     def apply_gradients(self):
         
         self.optimizer.step()
         self.loss = 0
+    
+    def set_lr(self, lr):
+        for g in self.optimizer.param_groups:
+            g['lr'] = lr
+    
+    def get_native_U(self, ground_truth, embeddings):
+        ground_truth = ground_truth.unsqueeze(0)
+        return self._extEpot(ground_truth, embeddings, stage='val')

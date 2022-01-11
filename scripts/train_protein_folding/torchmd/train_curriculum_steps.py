@@ -134,12 +134,16 @@ def main():
             
             if len(val_rmsds) > 10:
                 val_rmsds = np.delete(val_rmsds, 0)
-                index = np.where(val_rmsds < 1.0)
+                rmsd_limit = 2.0 if level > 0 else 2.0
+                index = np.where(val_rmsds < rmsd_limit)
                 folded = len(index[0]) / 10
                 
             if folded >= n_folded:
                     inc_diff = True
-                                        
+                    
+                    #steps += 400
+                    #output_period += 5
+                    
                     learner.set_steps(steps)
                     learner.set_output_period(output_period)
                     

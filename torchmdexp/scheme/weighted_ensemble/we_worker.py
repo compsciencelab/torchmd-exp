@@ -39,3 +39,9 @@ class WeightedEnsembleWorker(Worker):
     def apply_gradients(self):
         
         self.weighted_ensemble.apply_gradients() 
+    
+    def set_lr(self, lr):
+        self.weighted_ensemble.set_lr(lr)
+    
+    def get_native_U(self, ground_truth, embeddings):
+        return self.weighted_ensemble.get_native_U(ground_truth, embeddings).item()
