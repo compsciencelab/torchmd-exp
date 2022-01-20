@@ -46,4 +46,7 @@ class SimWorker(Worker):
         
     def get_ground_truth(self, gt_idx):
         return self.simulator.get_ground_truth(gt_idx)
+
+    def set_ground_truth(self, ground_truth):
+        self.simulator.set_ground_truth(ground_truth)
             

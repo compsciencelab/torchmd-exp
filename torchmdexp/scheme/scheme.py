@@ -59,6 +59,7 @@ class Scheme:
                  we_worker_resources = {"num_gpus": 1},
                  
                  # update
+                 batch_size=1,
                  local_device=None
                  ):
 

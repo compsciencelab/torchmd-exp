@@ -5,6 +5,7 @@ from torchmd.forces import Forces
 from torchmd.parameters import Parameters
 import itertools
 from statistics import mean
+import numpy as np
 
 BOLTZMAN = 0.001987191
 
@@ -101,12 +102,14 @@ class WeightedEnsemble:
         U_ext = self._extEpot(states, embeddings, "train")
         U_ext_hat = U_ext.detach()
         
+        U_prior = U_prior.to(U_ext.device)
+        
         U_ref = torch.add(U_prior, U_ext_hat)
         U = torch.add(U_prior, U_ext)
 
         exponentials = torch.exp(-torch.divide(torch.subtract(U, U_ref), self.T*BOLTZMAN))
         weights = torch.divide(exponentials, exponentials.sum())
-        
+
         return weights
     
     def _effectiven(self, weights):
@@ -145,13 +148,16 @@ class WeightedEnsemble:
     
     def compute_val_loss(self, ground_truth, states, **kwargs):
         
-        n_states = 'last10'
+        n_states = 'last'
         if n_states == 'last':
             val_rmsd = self.loss_fn(ground_truth, states[-1]).item()
         elif n_states == 'last10':
             val_rmsd = mean([self.loss_fn(ground_truth, state).item() for state in states[-10:]])
         else:
             val_rmsd = mean([self.loss_fn(ground_truth, state).item() for state in states])
+        
+        val_rmsds = np.array([self.loss_fn(ground_truth, state).item() for state in states])
+        update = True if val_rmsd > 2 else False
         
         return val_rmsd
         

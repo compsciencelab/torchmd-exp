@@ -16,7 +16,7 @@ import ray
 from moleculekit.molecule import Molecule
 import numpy as np
 from torchmdexp.datasets.proteinfactory import ProteinFactory
-
+from statistics import mean
 
 
 def main():
@@ -102,25 +102,28 @@ def main():
     protein_factory.set_levels(args.levels_dir)
     
     num_levels = protein_factory.get_num_levels()
-    n_folded = 1
-    
+    arr = np.array([])
+
     # 6. Train
     for level in range(num_levels):
                 
         inc_diff = False
         
         # Update level
-        arr = protein_factory.get_level(level) # FOR NOW LEAVE IT LIKE THIS FOR SIMPLICITY
+        new_level = protein_factory.get_level(level) # FOR NOW LEAVE IT LIKE THIS FOR SIMPLICITY
+        arr = np.append(arr, new_level, axis=0) if level != 0 else new_level
         learner.level_up()
         
         # Change lr
         if level > 0:
-            lr *= 0.8
+            lr *= 0.5
             learner.set_lr(lr)
         
         val_rmsds = np.array([])
-        folded = 0
+        prev_av_100_val_rmsd = 0
+        warm_up = 0
         while inc_diff == False:
+            warm_up += 1
             
             # Set init coordinates
             index = np.random.choice(arr.shape[0], 1, replace=False) # Get index of a random conformation in the level
@@ -130,21 +133,18 @@ def main():
             learner.step()
 
             val_rmsd = learner.get_val_loss()
-            val_rmsds = np.append(val_rmsds, val_rmsd)
             
-            if len(val_rmsds) > 10:
-                val_rmsds = np.delete(val_rmsds, 0)
-                index = np.where(val_rmsds < 1.0)
-                folded = len(index[0]) / 10
-                
-            if folded >= n_folded:
-                    inc_diff = True
-                                        
-                    learner.set_steps(steps)
-                    learner.set_output_period(output_period)
-                    
-                    n_folded = n_folded - 0.1 if n_folded*0.9 > 0.1 else 0.1
-                    
+            if warm_up > 0:
+                val_rmsds = np.append(val_rmsds, val_rmsd)
+            
+            if len(val_rmsds) == 10 and warm_up > 0:
+                av_100_val_rmsd = mean(val_rmsds)
+                if 0 <= abs(av_100_val_rmsd - prev_av_100_val_rmsd) <= 0.1 and av_100_val_rmsd < 2:
+                        inc_diff = True
+        
+                val_rmsds = np.array([])
+                prev_av_100_val_rmsd = av_100_val_rmsd
+                                    
             if inc_diff == True:
                 learner.save_model()
 
@@ -175,7 +175,14 @@ def get_args(arguments=None):
     parser.add_argument('--rbf-type', type=str, default='expnorm', choices=list(rbf_class_mapping.keys()), help='Type of distance expansion')
     parser.add_argument('--trainable-rbf', type=bool, default=False, help='If distance expansion functions should be trainable')
     parser.add_argument('--neighbor-embedding', type=bool, default=False, help='If a neighbor embedding should be applied before interactions')
+    parser.add_argument('--aggr', type=str, default='add', help='Aggregation operation for CFConv filter output. Must be one of \'add\', \'mean\', or \'max\'')
     
+    # Transformer specific
+    parser.add_argument('--distance-influence', type=str, default='both', choices=['keys', 'values', 'both', 'none'], help='Where distance information is included inside the attention')
+    parser.add_argument('--attn-activation', default='silu', choices=list(act_class_mapping.keys()), help='Attention activation function')
+    parser.add_argument('--num-heads', type=int, default=8, help='Number of attention heads')
+
+
     # dataset specific
     parser.add_argument('--reference_dir', default=None, help='Directory with reference data')
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
@@ -185,7 +192,7 @@ def get_args(arguments=None):
     # Torchmdexp specific
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
     parser.add_argument('--forcefield', default="/shared/carles/repo/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
-    parser.add_argument('--forceterms', nargs='+', default="bonds", help='Forceterms to include, e.g. --forceterms Bonds LJ')
+    parser.add_argument('--forceterms', nargs='+', default=[], help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--cutoff', default=None, type=float, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--rfa', default=False, action='store_true', help='Enable reaction field approximation')
     parser.add_argument('--replicas', type=int, default=1, help='Number of different replicas to run')
@@ -208,7 +215,6 @@ def get_args(arguments=None):
     parser.add_argument('--cutoff-lower', type=float, default=0.0, help='Lower cutoff in model')
     parser.add_argument('--cutoff-upper', type=float, default=5.0, help='Upper cutoff in model')
     parser.add_argument('--atom-filter', type=int, default=-1, help='Only sum over atoms with Z > atom_filter')
-    
     parser.add_argument('--max-z', type=int, default=100, help='Maximum atomic number that fits in the embedding matrix')
     parser.add_argument('--max-num-neighbors', type=int, default=32, help='Maximum number of neighbors to consider in the network')
     parser.add_argument('--standardize', type=bool, default=False, help='If true, multiply prediction by dataset std and add mean')

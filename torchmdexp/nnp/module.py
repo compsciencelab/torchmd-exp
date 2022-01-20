@@ -10,7 +10,6 @@ class LNNP(LightningModule):
         super(LNNP, self).__init__()
         self.save_hyperparameters(hparams)
         
-        
         if self.hparams.load_model:
             self.model = load_model(self.hparams.load_model, device=self.hparams.device, 
                                     derivative=self.hparams.derivative

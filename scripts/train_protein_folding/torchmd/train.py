@@ -17,7 +17,7 @@ from moleculekit.molecule import Molecule
 import numpy as np
 from torchmdexp.datasets.proteinfactory import ProteinFactory
 from statistics import mean
-
+import os
 
 def main():
     args = get_args()
@@ -43,9 +43,11 @@ def main():
     optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
 
     # Load training molecules
+    train_names = [l.rstrip() for l in open(os.path.join(args.datasets, args.train_set))]
     protein_factory = ProteinFactory(args.datasets, args.train_set)
-    protein_factory.set_ground_truth(args.reference_dir)
-    train_ground_truth = protein_factory.get_ground_truth()
+    protein_factory.set_levels(args.levels_dir)
+    #protein_factory.set_ground_truth(args.reference_dir)
+    train_ground_truth = protein_factory.get_ground_truth(0)
     
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
@@ -94,13 +96,12 @@ def main():
 
 
     # 4. Define Learner
-    learner = Learner(scheme, steps, output_period, log_dir=args.log_dir, keys = ('level', 'steps', 'Train loss', 'Val loss', 'Native Upot'))    
+    learner = Learner(scheme, steps, output_period, train_names=train_names, log_dir=args.log_dir, save_traj=args.save_traj,
+                      keys = ('level', 'steps', 'Train loss', 'Val loss', 'Native Upot'))    
 
     
     # 5. Define epoch and  Levels
-    epoch = 0
-    protein_factory.set_levels(args.levels_dir)
-    
+    epoch = 0    
     num_levels = protein_factory.get_num_levels()
     arr = np.array([])
 
@@ -110,55 +111,27 @@ def main():
         inc_diff = False
         
         # Update level
-        new_level = protein_factory.get_level(level) # FOR NOW LEAVE IT LIKE THIS FOR SIMPLICITY
-        arr = np.append(arr, new_level, axis=0) if level != 0 else new_level
+        ground_truth = protein_factory.get_ground_truth(level)
+        learner.set_ground_truth(ground_truth)
         learner.level_up()
         
         # Change lr
-        #if level == 1:
-        #    lr = 1e-4
-        #    learner.set_lr(lr)
-        
-        val_rmsds = np.array([])
-        prev_av_100_val_rmsd = 0
-        iters = 0
+        if level == 1:
+            lr = 1e-4
+            learner.set_lr(lr)
+            
         while inc_diff == False:
-            iters += 1
-            
+
             # Set init coordinates
-            index = np.random.choice(arr.shape[0], 1, replace=False) # Get index of a random conformation in the level
-            init_coords = np.moveaxis(arr[index], 0, -1) # Select init coords and reshape
-            learner.set_init_state(init_coords)
-            
+            init_states = protein_factory.get_level(level)
+            learner.set_init_state(init_states)
             learner.step()
 
             val_rmsd = learner.get_val_loss()
-            val_rmsds = np.append(val_rmsds, val_rmsd)
             
-            if len(val_rmsds) == 10:
-                av_100_val_rmsd = mean(val_rmsds)
-                if 0 <= abs(av_100_val_rmsd - prev_av_100_val_rmsd) <= 0.1 and av_100_val_rmsd < 2:
-                    if steps >= 2000: 
-                        inc_diff = True 
-                    else:
-                        steps += 400
-                        output_period += 5
-                        learner.set_steps(steps)
-                        learner.set_output_period(output_period)
-                        if steps < 1600:
-                            lr *= 0.5
-                            learner.set_lr(lr)
+            if val_rmsd < 1.5:
+                inc_diff = True
 
-                elif iters > 20 and level > 0:
-                    steps += 2400
-                    output_period += 30
-                    learner.set_steps(steps)
-                    learner.set_output_period(output_period)
-                    iters = 0
-                    
-                val_rmsds = np.array([])
-                prev_av_100_val_rmsd = av_100_val_rmsd
-                                    
             if inc_diff == True:
                 learner.save_model()
 
@@ -234,6 +207,7 @@ def get_args(arguments=None):
     parser.add_argument('--standardize', type=bool, default=False, help='If true, multiply prediction by dataset std and add mean')
     parser.add_argument('--reduce-op', type=str, default='add', choices=['add', 'mean'], help='Reduce operation to apply to atomic predictions')
     parser.add_argument('--exclusions', default=('bonds', 'angles', '1-4'), type=tuple, help='exclusions for the LJ or repulsionCG term')
+    parser.add_argument('--save-traj', default=False, type=tuple, help='Save training states')
 
     args = parser.parse_args(args=arguments)
     
