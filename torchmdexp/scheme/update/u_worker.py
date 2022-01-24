@@ -5,6 +5,7 @@ from statistics import mean
 from torchmdexp.losses.rmsd import rmsd
 import numpy as np
 import os
+import ray
 
 class UWorker(Worker):
     """
@@ -50,9 +51,8 @@ class UWorker(Worker):
         """
         Makes a simulation and computes the weighted ensemble.
         """
-        
         if self.sim_execution == "centralised" and self.reweighting_execution == "centralised":
-            
+
             sim_dict = self.local_worker.simulate(steps, output_period)
             
             info = {}
@@ -94,16 +94,67 @@ class UWorker(Worker):
                 
             info['train_loss'] = mean(train_losses)
             info['val_loss'] = mean(val_losses)
-                
-        return info
         
+        
+        if self.sim_execution == "parallelised" and self.reweighting_execution == "centralised":
+                        
+            # SIMULATE
+            sim_dict = {}
+            pending = [e.simulate.remote(steps, output_period) for e in self.remote_workers]
+            sim_results = ray.get(pending)
+            [sim_dict.update(result) for result in sim_results]
+            
+
+            # REWEIGHTING
+            info = {}
+            train_losses = []
+            val_losses = []
+
+            for s in sim_dict:
+                system_result = sim_dict[s]
+                
+                # Compute Train loss
+                self.local_we_worker.compute_loss(**system_result)
+                train_losses.append(self.local_we_worker.get_loss())
+                
+                # Optim step
+                self.local_we_worker.apply_gradients()
+
+                # Compute Val Loss
+                val_loss = self.local_we_worker.compute_val_loss(**system_result)
+                info[s] = val_loss
+                val_losses.append(val_loss)    
+                
+                # Compute Native Energy
+                gt = sim_dict[s]['ground_truth']
+                info['U_' + s] = self.local_we_worker.get_native_U(ground_truth=gt, embeddings=system_result['embeddings'])
+                            
+            # Set weights
+            weights = self.local_we_worker.get_weights()
+            for e in self.remote_workers: e.set_weights.remote(weights)
+                
+            info['train_loss'] = mean(train_losses)
+            info['val_loss'] = mean(val_losses)
+            
+        return info
+    
+    
+    
     def set_init_state(self, init_state):
         if self.sim_execution == "centralised" and self.reweighting_execution == "centralised":
             self.local_worker.set_init_state(init_state)
+        
     
     def set_ground_truth(self, ground_truth):
         if self.sim_execution == "centralised" and self.reweighting_execution == "centralised":
             self.local_worker.set_ground_truth(ground_truth)
+            
+        elif self.sim_execution == "parallelised" and self.reweighting_execution == "centralised":
+            batch_size = len(ground_truth) // len(self.remote_workers)
+            
+            for e in self.remote_workers:
+                batch_gt, ground_truth = ground_truth[:batch_size], ground_truth[batch_size:]
+                e.set_ground_truth.remote(batch_gt)
 
     
     def get_val_rmsd(self):

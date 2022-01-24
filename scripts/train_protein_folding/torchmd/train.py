@@ -46,7 +46,6 @@ def main():
     train_names = [l.rstrip() for l in open(os.path.join(args.datasets, args.train_set))]
     protein_factory = ProteinFactory(args.datasets, args.train_set)
     protein_factory.set_levels(args.levels_dir)
-    #protein_factory.set_ground_truth(args.reference_dir)
     train_ground_truth = protein_factory.get_ground_truth(0)
     
     # 1. Define the Sampler which performs the simulation and returns the states and energies
@@ -77,8 +76,9 @@ def main():
     })
 
     # Simulation specs
-    params.update({'num_sim_workers': 1,
-                   'sim_worker_resources': {"num_gpus": 1}
+    params.update({'num_sim_workers': 2,
+                   'sim_worker_resources': {"num_gpus": 1}, 
+                   'add_local_worker': False
     })
 
     # Reweighting specs
@@ -124,7 +124,7 @@ def main():
 
             # Set init coordinates
             init_states = protein_factory.get_level(level)
-            learner.set_init_state(init_states)
+            #learner.set_init_state(init_states)
             learner.step()
 
             val_rmsd = learner.get_val_loss()

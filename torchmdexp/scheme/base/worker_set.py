@@ -60,6 +60,9 @@ class WorkerSet:
             elif worker.__name__ == "WeightedEnsembleWorker" and num_workers == 1:
                 self.num_workers = 0
             
+            elif worker.__name__ == "SimWorker" and num_workers > 1:
+                raise ValueError("You cannot add local worker with more than 1 SimWorker")
+                
             self._local_worker = self._make_worker(
                 self.worker_class, index_worker = 0,
                 worker_params = local_params)

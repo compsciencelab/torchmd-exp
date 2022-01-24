@@ -274,12 +274,9 @@ class TorchMD_Sampler(Sampler):
         
         for idx, mol in enumerate(molecules):
             
-            ml = len(mol.coords)
-
             if idx == 0:
                 mol.dropFrames(keep=0)
-                batch = copy.copy(mol)
-
+                batch = copy.deepcopy(mol)
             else:
                 div = idx // 6
                 if div != prev_div:
@@ -296,23 +293,25 @@ class TorchMD_Sampler(Sampler):
                 mol.moveBy(move)
                 move = np.array([0, 0, 0])
 
-                batch.append(mol) # join molecules 
+                ml = len(batch.coords)
+                batch.append(mol) # join molecules
                 batch.box = np.array([[0],[0],[0]], dtype = np.float32)
                 batch.dihedrals = np.append(batch.dihedrals, mol.dihedrals + ml, axis=0)
-                
+        
         return batch
     
     def set_weights(self, weights):
         self.nnp.load_state_dict(weights)
     
     def get_ground_truth(self, gt):
-        return self.ground_truth[gt]
+        return self.sim_dict[gt]['gt']
     
     def set_ground_truth(self, ground_truth):
         
         self.names = [mol.viewname[:-4] for mol in ground_truth]
         self.mls = [len(mol.resname) for mol in ground_truth]
-        self.ground_truth = {name: get_native_coords(ground_truth[idx]) for idx, name in enumerate(self.names)}
+        gt_dict = {name: {'ground_truth': get_native_coords(ground_truth[idx])} for idx, name in enumerate(self.names)}
+        self.sim_dict.update(gt_dict)
         self.integrator = self._set_integrator(ground_truth, self.mls)        
     
     def _set_integrator(self, mols, mls):
@@ -330,10 +329,11 @@ class TorchMD_Sampler(Sampler):
         for idx, ml in enumerate(mls):
             mol_embeddings, my_e = my_e[:, :ml], my_e[:, ml:]
             self.sim_dict[self.names[idx]]['embeddings'] = mol_embeddings
-            
+                
         # Create forces
-        ff = ForceField.create(mol, self.forcefield)
+        ff = ForceField.create(mol, self.forcefield)        
         parameters = Parameters(ff, mol, terms=self.forceterms, device=self.device) 
+        
         self.forces = Forces(parameters,terms=self.forceterms, external=external, cutoff=self.cutoff, 
                              rfa=self.rfa, switch_dist=self.switch_dist, exclusions = self.exclusions
                         )

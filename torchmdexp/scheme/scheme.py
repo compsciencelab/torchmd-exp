@@ -52,6 +52,7 @@ class Scheme:
                  # simulation
                  num_sim_workers = 1,
                  sim_worker_resources={"num_gpus": 1},
+                 add_local_worker=True,
                  
                  # reweighting 
                  num_we_workers = 1,
@@ -73,6 +74,7 @@ class Scheme:
                                                           systems=systems,
                                                           device=device,
                                                           nnp=nnp,
+                                                          add_local_worker=add_local_worker,
                                                           sim_worker_resources=sim_worker_resources)
         
         we_workers_factory = WeightedEnsembleWorkerSet.create_factory(num_workers=num_we_workers,

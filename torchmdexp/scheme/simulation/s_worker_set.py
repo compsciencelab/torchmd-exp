@@ -36,6 +36,7 @@ class SimWorkerSet(WS):
                  systems,
                  device,
                  nnp,
+                 add_local_worker=True,
                  total_parent_workers=0,
                  worker_remote_config=default_remote_config):
         
@@ -59,6 +60,7 @@ class SimWorkerSet(WS):
             num_workers=self.num_workers,
             worker_params=self.worker_params,
             index_parent_worker=index_parent,
+            add_local_worker=add_local_worker,
             worker_remote_config=self.remote_config,
             total_parent_workers=total_parent_workers)
     
@@ -90,6 +92,7 @@ class SimWorkerSet(WS):
                        systems,
                        device,
                        nnp,
+                       add_local_worker=True,
                        total_parent_workers=0,
                        sim_worker_resources=default_remote_config):
         """
@@ -129,6 +132,7 @@ class SimWorkerSet(WS):
                 systems=systems,
                 device=device,
                 nnp=nnp,
+                add_local_worker=add_local_worker,
                 total_parent_workers=total_parent_workers,
                 worker_remote_config=sim_worker_resources)
 

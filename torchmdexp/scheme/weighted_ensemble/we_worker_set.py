@@ -11,6 +11,7 @@ class WeightedEnsembleWorkerSet(WS):
                  weighted_ensemble_factory,
                  nnp,
                  worker_info={},
+                 add_local_worker=True,
                  total_parent_workers=0,
                  worker_remote_config=default_remote_config):
         
@@ -43,6 +44,7 @@ class WeightedEnsembleWorkerSet(WS):
                        weighted_ensemble_factory,
                        nnp,
                        worker_info = {},
+                       add_local_worker=True,
                        total_parent_workers=0,
                        we_worker_resources=default_remote_config):
         """
@@ -80,6 +82,7 @@ class WeightedEnsembleWorkerSet(WS):
                 weighted_ensemble_factory=weighted_ensemble_factory,
                 nnp=nnp,
                 worker_info=worker_info,
+                add_local_worker=add_local_worker,
                 total_parent_workers=total_parent_workers,
                 worker_remote_config=we_worker_resources)
 
