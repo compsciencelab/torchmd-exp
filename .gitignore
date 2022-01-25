@@ -4,7 +4,6 @@ notebooks/plot_rmsds.ipynb
 notebooks/
 ntbs/
 normal_training.ipynb
-datasets/
 torchmdexp/nn/ntbs/
 greener.py
 rmsd.py
