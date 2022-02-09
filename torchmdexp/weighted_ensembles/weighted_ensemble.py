@@ -16,6 +16,7 @@ class WeightedEnsemble:
         nstates,
         lr,
         loss_fn,
+        val_fn,
         T = 350,
         replicas = 1,
         device='cpu',
@@ -23,6 +24,7 @@ class WeightedEnsemble:
      ):
         self.nstates = nstates
         self.loss_fn = loss_fn
+        self.val_fn = val_fn
         self.T = T
         self.replicas = replicas
         self.device = device
@@ -33,13 +35,14 @@ class WeightedEnsemble:
         self.optimizer = torch.optim.Adam(self.nnp.model.parameters(), lr=lr)
 
         # ------------------- Loss ----------------------------------
-        self.loss = 0
+        self.loss = torch.tensor(0, dtype = precision)
         
     @classmethod
     def create_factory(cls,
                        nstates,
                        lr,
                        loss_fn,
+                       val_fn,
                        T = 350,
                        replicas = 1,
                        precision = torch.double):
@@ -71,6 +74,7 @@ class WeightedEnsemble:
                        nstates,
                        lr,
                        loss_fn,
+                       val_fn,
                        T,
                        replicas,
                        device,
@@ -141,30 +145,29 @@ class WeightedEnsemble:
         self.optimizer.zero_grad()
         loss.backward()
                 
-        self.loss += loss
+        self.loss = loss.detach().item()
     
     def get_loss(self):
-        return self.loss.item()
+        return self.loss
     
     def compute_val_loss(self, ground_truth, states, **kwargs):
         
         n_states = 'last'
         if n_states == 'last':
-            val_rmsd = self.loss_fn(ground_truth, states[-1]).item()
+            val_rmsd = self.val_fn(ground_truth, states[-1]).item()
         elif n_states == 'last10':
-            val_rmsd = mean([self.loss_fn(ground_truth, state).item() for state in states[-10:]])
+            val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states[-10:]])
         else:
-            val_rmsd = mean([self.loss_fn(ground_truth, state).item() for state in states])
+            val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states])
         
-        val_rmsds = np.array([self.loss_fn(ground_truth, state).item() for state in states])
-        update = True if val_rmsd > 2 else False
+        #val_rmsds = np.array([self.val_fn(ground_truth, state).item() for state in states])
+        #update = True if val_rmsd > 2 else False
         
         return val_rmsd
         
     def apply_gradients(self):
         
         self.optimizer.step()
-        self.loss = 0
     
     def set_lr(self, lr):
         for g in self.optimizer.param_groups:

@@ -46,7 +46,6 @@ class Learner:
             total_dict = {}
             for name in self.train_names:
                 total_dict[name] = None
-                total_dict['U_'+name] = None
             self.results_dict.update(total_dict)
             keys = tuple([key for key in self.results_dict.keys()])
             self.logger = LogWriter(self.log_dir,keys=keys)

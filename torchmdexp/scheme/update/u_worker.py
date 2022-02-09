@@ -6,6 +6,7 @@ from torchmdexp.losses.rmsd import rmsd
 import numpy as np
 import os
 import ray
+import random
 
 class UWorker(Worker):
     """
@@ -54,14 +55,17 @@ class UWorker(Worker):
         if self.sim_execution == "centralised" and self.reweighting_execution == "centralised":
 
             sim_dict = self.local_worker.simulate(steps, output_period)
+            sys_names = list(sim_dict.keys())
+            random.shuffle(sys_names) # rdmize systems
             
             info = {}
             train_losses = []
             val_losses = []
-            
-            for s in sim_dict:
+            val_dict = {}
+            U_dict = {}
+            torch.cuda.empty_cache() 
+            for s in sys_names:
                 system_result = sim_dict[s]
-                gt = self.local_worker.get_ground_truth(s)
 
                 # Save states for TICA
                 if log_dir:
@@ -74,49 +78,50 @@ class UWorker(Worker):
                     np.save(os.path.join(log_dir, s + '.npy'), self.trajs[s])
                     
                 # Compute Train loss
-                self.local_we_worker.compute_loss(ground_truth=gt, **system_result)
+                self.local_we_worker.compute_loss(**system_result)
                 train_losses.append(self.local_we_worker.get_loss())
                 
                 # Optim step
                 self.local_we_worker.apply_gradients()
 
                 # Compute Val Loss
-                val_loss = self.local_we_worker.compute_val_loss(ground_truth=gt, **system_result)
-                info[s] = val_loss
+                val_loss = self.local_we_worker.compute_val_loss(**system_result)
+                val_dict[s] = val_loss
                 val_losses.append(val_loss)    
                 
                 # Compute Native Energy
-                info['U_' + s] = self.local_we_worker.get_native_U(ground_truth=gt, embeddings=system_result['embeddings'])
-                            
+                #gt = sim_dict[s]['ground_truth']
+                #U_dict['U_' + s] = self.local_we_worker.get_native_U(ground_truth=gt, embeddings=system_result['embeddings'])
+                torch.cuda.empty_cache()   
+                
             # Set weights
             weights = self.local_we_worker.get_weights()
             self.local_worker.set_weights(weights)
                 
             info['train_loss'] = mean(train_losses)
             info['val_loss'] = mean(val_losses)
-        
+            info.update(val_dict)
+            #info.update(U_dict)
         
         if self.sim_execution == "parallelised" and self.reweighting_execution == "centralised":
-                        
+
             # SIMULATE
             sim_dict = {}
             pending = [e.simulate.remote(steps, output_period) for e in self.remote_workers]
             sim_results = ray.get(pending)
             [sim_dict.update(result) for result in sim_results]
-            
-
+        
             # REWEIGHTING
             info = {}
             train_losses = []
             val_losses = []
-
             for s in sim_dict:
                 system_result = sim_dict[s]
-                
+                    
                 # Compute Train loss
                 self.local_we_worker.compute_loss(**system_result)
                 train_losses.append(self.local_we_worker.get_loss())
-                
+
                 # Optim step
                 self.local_we_worker.apply_gradients()
 
@@ -128,7 +133,8 @@ class UWorker(Worker):
                 # Compute Native Energy
                 gt = sim_dict[s]['ground_truth']
                 info['U_' + s] = self.local_we_worker.get_native_U(ground_truth=gt, embeddings=system_result['embeddings'])
-                            
+            
+            torch.cuda.empty_cache()          
             # Set weights
             weights = self.local_we_worker.get_weights()
             for e in self.remote_workers: e.set_weights.remote(weights)

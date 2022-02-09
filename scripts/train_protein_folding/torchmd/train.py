@@ -7,6 +7,7 @@ from torchmdexp.weighted_ensembles.weighted_ensemble import WeightedEnsemble
 from torchmdexp.learner import Learner
 from torchmdexp.nnp.module import LNNP
 from torchmdexp.losses.rmsd import rmsd
+from torchmdexp.losses.tmscore import tm_score
 from torchmd.utils import LoadFromFile
 from torchmdnet import datasets, priors, models
 from torchmdnet.models import output_modules
@@ -25,7 +26,7 @@ def main():
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-
+    
     # Start Ray.
     ray.init()
 
@@ -47,7 +48,7 @@ def main():
     protein_factory = ProteinFactory(args.datasets, args.train_set)
     protein_factory.set_levels(args.levels_dir)
     train_ground_truth = protein_factory.get_ground_truth(0)
-    
+
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
                                                              replicas=args.replicas, cutoff=args.cutoff, rfa=args.rfa,
@@ -58,7 +59,7 @@ def main():
                                                             )
 
     # 2. Define the Weighted Ensemble that computes the ensemble of states    
-    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, loss_fn=rmsd, T = args.temperature, 
+    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, loss_fn=rmsd, val_fn=tm_score, T = args.temperature, 
                                                                 replicas = args.replicas, precision = torch.double)
 
 
@@ -76,9 +77,9 @@ def main():
     })
 
     # Simulation specs
-    params.update({'num_sim_workers': 2,
+    params.update({'num_sim_workers': 1,
                    'sim_worker_resources': {"num_gpus": 1}, 
-                   'add_local_worker': False
+                   'add_local_worker': True
     })
 
     # Reweighting specs
@@ -116,20 +117,21 @@ def main():
         learner.level_up()
         
         # Change lr
-        if level == 1:
-            lr = 1e-4
+        if level >= 1:
+            lr *= 0.6
+            #lr = 1e-5 if lr < 5e-6 else lr
             learner.set_lr(lr)
-            
+
         while inc_diff == False:
 
             # Set init coordinates
-            init_states = protein_factory.get_level(level)
+            #init_states = protein_factory.get_level(level)
             #learner.set_init_state(init_states)
             learner.step()
 
-            val_rmsd = learner.get_val_loss()
+            val_tm_score = learner.get_val_loss()
             
-            if val_rmsd < 1.5:
+            if val_tm_score > 0.9:
                 inc_diff = True
 
             if inc_diff == True:
