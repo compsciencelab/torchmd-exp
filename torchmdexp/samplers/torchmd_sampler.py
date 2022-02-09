@@ -6,12 +6,13 @@ from torchmd.forces import Forces
 from torchmd.integrator import Integrator, maxwell_boltzmann
 from torchmd.parameters import Parameters
 from torchmd.systems import System
-from torchmdexp.nn.calculator import External
+from torchmdexp.nnp.calculator import External
 import collections
 import itertools
 from torchmdexp.utils.get_native_coords import get_native_coords
 import numpy as np
 import copy
+import time
 
 class TorchMD_Sampler(Sampler):
     """
@@ -87,7 +88,7 @@ class TorchMD_Sampler(Sampler):
                  langevin_gamma=0.1 
                 ):
         
-        
+        self.mols = mols
         self.mls = mls
         self.names = names
         self.device = device
@@ -115,7 +116,6 @@ class TorchMD_Sampler(Sampler):
         # Create the dictionary used to return states and prior energies
         self.sim_dict = collections.defaultdict(dict)
         
-        self.integrator = self._set_integrator(mols, mls)
         
     @classmethod
     def create_factory(cls,
@@ -214,12 +214,11 @@ class TorchMD_Sampler(Sampler):
             
         # Iterator and start computing forces
         iterator = range(1,int(steps/output_period)+1)
-        self.integrator.systems.set_positions(self.init_coords)
-        self.integrator.systems.set_velocities(maxwell_boltzmann(self.forces.par.masses, T=self.temperature, replicas=self.replicas))
+        integrator = self._set_integrator(self.mols, self.mls)
         
         # Define the states
         nstates = int(steps // output_period)
-        states = torch.zeros(nstates, len(self.integrator.systems.pos[0]), 3, device = "cpu",
+        states = torch.zeros(nstates, len(integrator.systems.pos[0]), 3, device = "cpu",
                          dtype = self.precision)
 
         # Create dict to collect states and energies
@@ -230,24 +229,23 @@ class TorchMD_Sampler(Sampler):
             sample_dict[self.names[idx]]['states'] = None
             sample_dict[self.names[idx]]['U_prior'] = torch.zeros([nstates], device='cpu')
 
-        
         # Run the simulation
         for i in iterator:
-            Ekin, Epot, T = self.integrator.step(niter=output_period)
-            states[i-1] = self.integrator.systems.pos.to("cpu")
+            Ekin, Epot, T = integrator.step(niter=output_period)
+            states[i-1] = integrator.systems.pos.to("cpu")
             
             # Extract prior energies and Fill dict
-            if "bonds" in self.forceterms:
-                E_bonds = self.integrator.forces.E_bonds.to('cpu')
-                sample_dict = self._split_bonds_E(E_bonds, sample_dict, i) 
-            if "dihedrals" in self.forceterms:
-                E_dih = self.integrator.forces.E_dihedrals.to('cpu')
-                sample_dict = self._split_dih_E(E_dih, sample_dict, i) 
-            if "repulsioncg" in self.forceterms:
-                ava_idx_cut = self.integrator.forces.ava_idx_cut.to('cpu')
-                E_rep = self.integrator.forces.E_repulsioncg.to('cpu')
-                sample_dict = self._split_rep_E(E_rep, ava_idx_cut, sample_dict, i)             
-        
+            #if "bonds" in self.forceterms:
+            #    E_bonds = integrator.forces.E_bonds.to('cpu')
+            #    sample_dict = self._split_bonds_E(E_bonds, sample_dict, i) 
+            #if "dihedrals" in self.forceterms:
+            #    E_dih = integrator.forces.E_dihedrals.to('cpu')
+            #    sample_dict = self._split_dih_E(E_dih, sample_dict, i) 
+            #if "repulsioncg" in self.forceterms:
+            #    ava_idx_cut = integrator.forces.ava_idx_cut.to('cpu')
+            #    E_rep = integrator.forces.E_repulsioncg.to('cpu')
+            #    sample_dict = self._split_rep_E(E_rep, ava_idx_cut, sample_dict, i)             
+                
         sample_dict = self._split_states(states, sample_dict)
         self.sim_dict.update(sample_dict)
         return self.sim_dict
@@ -271,9 +269,8 @@ class TorchMD_Sampler(Sampler):
         prev_div = 0 
         axis = 0
         move = np.array([0, 0, 0,])
-        
+
         for idx, mol in enumerate(molecules):
-            
             if idx == 0:
                 mol.dropFrames(keep=0)
                 batch = copy.deepcopy(mol)
@@ -312,7 +309,7 @@ class TorchMD_Sampler(Sampler):
         self.mls = [len(mol.resname) for mol in ground_truth]
         gt_dict = {name: {'ground_truth': get_native_coords(ground_truth[idx])} for idx, name in enumerate(self.names)}
         self.sim_dict.update(gt_dict)
-        self.integrator = self._set_integrator(ground_truth, self.mls)        
+        self.mols = ground_truth
     
     def _set_integrator(self, mols, mls):
         
@@ -328,13 +325,13 @@ class TorchMD_Sampler(Sampler):
         my_e = embeddings 
         for idx, ml in enumerate(mls):
             mol_embeddings, my_e = my_e[:, :ml], my_e[:, ml:]
-            self.sim_dict[self.names[idx]]['embeddings'] = mol_embeddings
+            self.sim_dict[self.names[idx]]['embeddings'] = mol_embeddings.to('cpu')
                 
         # Create forces
         ff = ForceField.create(mol, self.forcefield)        
         parameters = Parameters(ff, mol, terms=self.forceterms, device=self.device) 
         
-        self.forces = Forces(parameters,terms=self.forceterms, external=external, cutoff=self.cutoff, 
+        forces = Forces(parameters,terms=self.forceterms, external=external, cutoff=self.cutoff, 
                              rfa=self.rfa, switch_dist=self.switch_dist, exclusions = self.exclusions
                         )
         
@@ -342,10 +339,13 @@ class TorchMD_Sampler(Sampler):
         system = System(mol.numAtoms, nreplicas=self.replicas, precision = self.precision, device=self.device)
         system.set_positions(mol.coords)
         system.set_box(mol.box)
-        system.set_velocities(maxwell_boltzmann(self.forces.par.masses, T=self.temperature, replicas=self.replicas))
+        system.set_velocities(maxwell_boltzmann(forces.par.masses, T=self.temperature, replicas=self.replicas))
         
-        integrator = Integrator(system, self.forces, self.timestep, gamma = self.langevin_gamma, 
+        integrator = Integrator(system, forces, self.timestep, gamma = self.langevin_gamma, 
                                 device = self.device, T= self.langevin_temperature)
+        integrator.systems.set_positions(self.init_coords)
+        integrator.systems.set_velocities(maxwell_boltzmann(forces.par.masses, T=self.temperature, replicas=self.replicas))
+
         return integrator
 
     def _split_bonds_E(self, E_bonds, sample_dict, i):
