@@ -175,12 +175,12 @@ def get_args(arguments=None):
     # dataset specific
     parser.add_argument('--reference_dir', default=None, help='Directory with reference data')
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
-    parser.add_argument('--datasets', default='/shared/carles/repo/torchmd-exp/datasets', type=str, 
+    parser.add_argument('--datasets', default='/shared/carles/torchmd-exp/datasets', type=str, 
                         help='Directory with the files with the names of train and val proteins')
     
     # Torchmdexp specific
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
-    parser.add_argument('--forcefield', default="/shared/carles/repo/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
+    parser.add_argument('--forcefield', default="/shared/carles/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
     parser.add_argument('--forceterms', nargs='+', default=[], help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--cutoff', default=None, type=float, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--rfa', default=False, action='store_true', help='Enable reaction field approximation')
