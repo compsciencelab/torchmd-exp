@@ -60,7 +60,7 @@ class Scheme:
                  we_worker_resources = {"num_gpus": 1},
                  
                  # update
-                 batch_size=1,
+                 batch_size=16,
                  local_device=None
                  ):
 
@@ -87,7 +87,7 @@ class Scheme:
 
             sim_workers_factory = sim_workers_factory,
             we_workers_factory = we_workers_factory,
-            loss_fn = loss_fn,
+            batch_size=batch_size,
             sim_execution = sim_execution,
             reweighting_execution = reweighting_execution,
             local_device=local_device

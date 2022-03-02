@@ -26,9 +26,9 @@ class WeightedEnsembleWorker(Worker):
         # Print worker information
         self.print_worker_info()
                 
-    def compute_loss(self, ground_truth, **sim_results):
+    def compute_gradients(self, ground_truth, **sim_results):
                 
-        self.weighted_ensemble.compute_loss(ground_truth=ground_truth, **sim_results)
+        return self.weighted_ensemble.compute_gradients(ground_truth=ground_truth, **sim_results)
     
     def get_loss(self):
         return self.weighted_ensemble.get_loss()
@@ -36,9 +36,9 @@ class WeightedEnsembleWorker(Worker):
     def compute_val_loss(self, ground_truth, **sim_results):
         return self.weighted_ensemble.compute_val_loss(ground_truth, **sim_results)
     
-    def apply_gradients(self):
+    def apply_gradients(self, gradients=None):
         
-        self.weighted_ensemble.apply_gradients() 
+        self.weighted_ensemble.apply_gradients(gradients) 
     
     def set_lr(self, lr):
         self.weighted_ensemble.set_lr(lr)

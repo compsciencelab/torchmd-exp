@@ -17,6 +17,7 @@ class WeightedEnsemble:
         lr,
         loss_fn,
         val_fn,
+        max_grad_norm = 550,
         T = 350,
         replicas = 1,
         device='cpu',
@@ -25,6 +26,7 @@ class WeightedEnsemble:
         self.nstates = nstates
         self.loss_fn = loss_fn
         self.val_fn = val_fn
+        self.max_grad_norm = max_grad_norm
         self.T = T
         self.replicas = replicas
         self.device = device
@@ -35,7 +37,7 @@ class WeightedEnsemble:
         self.optimizer = torch.optim.Adam(self.nnp.model.parameters(), lr=lr)
 
         # ------------------- Loss ----------------------------------
-        self.loss = torch.tensor(0, dtype = precision)
+        self.loss = torch.tensor(0, dtype = precision, device=device)
         
     @classmethod
     def create_factory(cls,
@@ -43,6 +45,7 @@ class WeightedEnsemble:
                        lr,
                        loss_fn,
                        val_fn,
+                       max_grad_norm = 550,
                        T = 350,
                        replicas = 1,
                        precision = torch.double):
@@ -75,6 +78,7 @@ class WeightedEnsemble:
                        lr,
                        loss_fn,
                        val_fn,
+                       max_grad_norm,
                        T,
                        replicas,
                        device,
@@ -128,7 +132,6 @@ class WeightedEnsemble:
         weights = self._weights(states, embeddings, U_prior)
         
         n = len(weights)
-        #neff_hat = self._effectiven(weights)
         
         # Compute the weighted ensemble of the conformations 
         states = states.to(self.device)
@@ -140,15 +143,32 @@ class WeightedEnsemble:
         
         w_e = self.compute(states, embeddings, U_prior)
         
-        loss = self.loss_fn(w_e, ground_truth)
-        loss = torch.log(loss + 1.0)
+        loss = self.loss_fn(w_e, ground_truth)  
+        return loss
+        
+    
+    def compute_gradients(self, ground_truth, states, embeddings, U_prior, grads_to_cpu=True):
+        
         self.optimizer.zero_grad()
+        loss = self.compute_loss(ground_truth, states, embeddings, U_prior)
         loss.backward()
-                
-        self.loss = loss.detach().item()
+        torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
+        
+        
+        grads = []
+        for p in self.nnp.parameters():
+            if grads_to_cpu:
+                if p.grad is not None: grads.append(p.grad.data.cpu().numpy())
+                else: grads.append(None)
+            else:
+                if p.grad is not None:
+                    grads.append(p.grad)
+                    
+        return grads, loss.item()
+        
     
     def get_loss(self):
-        return self.loss
+        return self.loss.detach().item()
     
     def compute_val_loss(self, ground_truth, states, **kwargs):
         
@@ -159,14 +179,16 @@ class WeightedEnsemble:
             val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states[-10:]])
         else:
             val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states])
-        
-        #val_rmsds = np.array([self.val_fn(ground_truth, state).item() for state in states])
-        #update = True if val_rmsd > 2 else False
-        
+                
         return val_rmsd
         
-    def apply_gradients(self):
+    def apply_gradients(self, gradients):
         
+        if gradients:
+            for g, p in zip(gradients, self.nnp.parameters()):
+                if g is not None:
+                    p.grad = torch.from_numpy(g).to(self.device)
+                    
         self.optimizer.step()
     
     def set_lr(self, lr):
