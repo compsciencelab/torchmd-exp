@@ -54,5 +54,6 @@ class LNNP(LightningModule):
             # TODO: the model doesn't necessarily need to return a derivative once
             # Union typing works under TorchScript (https://github.com/pytorch/pytorch/pull/53180)
             Upot, force = self(z, pos, batch)
+            
         Upot = scatter(Upot, batch, dim=0, reduce='add')
         return Upot

@@ -7,11 +7,11 @@ import time
 class LogWriter(object):
     #kind of inspired form openai.baselines.bench.monitor
     #We can add here an optional Tensorboard logger as well
-    def __init__(self, path, keys, header=''):
+    def __init__(self, path, keys, monitor='monitor.csv', header=''):
         self.keys = tuple(keys)+('t',)
         assert path is not None
         self._clean_log_dir(path)
-        filename = os.path.join(path, 'monitor.csv')
+        filename = os.path.join(path, monitor)
 
         self.f = open(filename, "wt")
         if isinstance(header, dict):
@@ -34,5 +34,5 @@ class LogWriter(object):
             os.makedirs(log_dir)
         except OSError:
             files = glob.glob(os.path.join(log_dir, '*.csv'))
-            for f in files:
-                os.remove(f)
+            #for f in files:
+            #    os.remove(f)

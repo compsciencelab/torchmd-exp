@@ -40,8 +40,11 @@ def tm_score(c1, c2):
     diffs = rot_P - Q
     
     l_target = diffs.shape[1]
-        
-    d0 = torch.tensor([1.24 * cubic_root(l_target - 15) - 1.8], device=device)
+    
+    if l_target >= 50:
+        d0 = torch.tensor([1.24 * cubic_root(l_target - 15) - 1.8], device=device)
+    else:
+        d0 = torch.tensor(4.5, device=device)
     tms = (torch.tensor([1.0], device=device) / ((((diffs*diffs).sum(0).sqrt()) / d0)**2 + 1.0)).sum() / l_target
         
     return tms

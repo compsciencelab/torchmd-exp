@@ -308,9 +308,9 @@ class TorchMD_Sampler(Sampler):
         self.names = [mol.viewname[:-4] for mol in ground_truth]
         self.mls = [len(mol.resname) for mol in ground_truth]
         gt_dict = {name: {'ground_truth': get_native_coords(ground_truth[idx])} for idx, name in enumerate(self.names)}
-        self.sim_dict.update(gt_dict)
+        self.sim_dict = gt_dict
         self.mols = ground_truth
-    
+
     def _set_integrator(self, mols, mls):
         
         # Create simulation system

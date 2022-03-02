@@ -6,7 +6,8 @@ from torchmdexp.scheme.scheme import Scheme
 from torchmdexp.weighted_ensembles.weighted_ensemble import WeightedEnsemble
 from torchmdexp.learner import Learner
 from torchmdexp.nnp.module import LNNP
-from torchmdexp.losses.rmsd import rmsd
+from torchmdexp.metrics.l2_rmsd import l2_rmsd
+from torchmdexp.metrics.tmscore import tm_score
 from torchmd.utils import LoadFromFile
 from torchmdnet import datasets, priors, models
 from torchmdnet.models import output_modules
@@ -17,7 +18,9 @@ from moleculekit.molecule import Molecule
 import numpy as np
 from torchmdexp.datasets.proteinfactory import ProteinFactory
 from statistics import mean
-
+import os
+import random
+from test_set2 import prepare_test, test_step
 
 def main():
     args = get_args()
@@ -25,27 +28,28 @@ def main():
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-
+    
     # Start Ray.
     ray.init()
 
     # Hyperparameters
-    steps = args.max_steps
+    steps = args.steps
     output_period = args.output_period
     nstates = steps // output_period
-    max_epochs = args.num_epochs
+    sim_batch_size = args.sim_batch_size
     batch_size = args.batch_size
-    ubatch_size = args.ubatch_size
     lr = args.lr
+    num_sim_workers = 2
     
     # Define NNP
     nnp = LNNP(args)
     optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
 
     # Load training molecules
+    train_names = [l.rstrip() for l in open(os.path.join(args.datasets, args.train_set))]
     protein_factory = ProteinFactory(args.datasets, args.train_set)
-    protein_factory.set_ground_truth(args.reference_dir)
-    train_ground_truth = protein_factory.get_ground_truth()
+    protein_factory.set_levels(args.levels_dir)
+    train_ground_truth = protein_factory.get_ground_truth(0)
     
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
@@ -55,9 +59,15 @@ def main():
                                                              temperature=args.temperature, langevin_temperature=args.langevin_temperature,
                                                              langevin_gamma=args.langevin_gamma
                                                             )
-
+    
+    ####################################################################################################################
+    # ** Define test simulator
+    test_simulator, test_dict, test_logger = prepare_test(args, moleculekit_system_factory, torchmd_sampler_factory, nnp)
+    ####################################################################################################################
+    
     # 2. Define the Weighted Ensemble that computes the ensemble of states    
-    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, loss_fn=rmsd, T = args.temperature, 
+    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, loss_fn=l2_rmsd, val_fn=tm_score,
+                                                                max_grad_norm = args.max_grad_norm, T = args.temperature, 
                                                                 replicas = args.replicas, precision = torch.double)
 
 
@@ -71,12 +81,13 @@ def main():
                    'nnp': nnp,
                    'device': args.device,
                    'weighted_ensemble_factory': weighted_ensemble_factory,
-                   'loss_fn': rmsd
+                   'loss_fn': l2_rmsd
     })
 
     # Simulation specs
-    params.update({'num_sim_workers': 1,
-                   'sim_worker_resources': {"num_gpus": 1}
+    params.update({'num_sim_workers': num_sim_workers,
+                   'sim_worker_resources': {"num_gpus": 1}, 
+                   'add_local_worker': False
     })
 
     # Reweighting specs
@@ -86,7 +97,8 @@ def main():
     })
 
     # Update specs
-    params.update({'local_device': args.device
+    params.update({'local_device': args.device, 
+                   'batch_size': batch_size
     })
 
 
@@ -94,15 +106,14 @@ def main():
 
 
     # 4. Define Learner
-    learner = Learner(scheme, steps, output_period, log_dir=args.log_dir, keys = ('level', 'steps', 'Train loss', 'Val loss', 'Native Upot'))    
+    learner = Learner(scheme, steps, output_period, train_names=train_names, log_dir=args.log_dir, save_traj=args.save_traj,
+                      keys = ('level', 'steps', 'Train loss', 'Val loss', 'Native Upot'))    
 
     
-    # 5. Define epoch and  Levels
-    epoch = 0
-    protein_factory.set_levels(args.levels_dir)
-    
+    # 5. Define epoch and Levels
+    epoch = 0    
     num_levels = protein_factory.get_num_levels()
-    arr = np.array([])
+    
 
     # 6. Train
     for level in range(num_levels):
@@ -110,43 +121,55 @@ def main():
         inc_diff = False
         
         # Update level
-        new_level = protein_factory.get_level(level) # FOR NOW LEAVE IT LIKE THIS FOR SIMPLICITY
-        arr = np.append(arr, new_level, axis=0) if level != 0 else new_level
+        ground_truth = protein_factory.get_ground_truth(level)
         learner.level_up()
         
         # Change lr
-        if level > 0:
-            lr *= 0.5
+        if level >= 1:
+            lr *= args.lr_decay
+            lr = args.min_lr if lr < args.min_lr else lr
             learner.set_lr(lr)
-        
-        val_rmsds = np.array([])
-        prev_av_100_val_rmsd = 0
-        warm_up = 0
+            
+        # Set sim batch size:
+        while sim_batch_size > args.sim_batch_size:
+            sim_batch_size //= 2
+            
         while inc_diff == False:
-            warm_up += 1
             
-            # Set init coordinates
-            index = np.random.choice(arr.shape[0], 1, replace=False) # Get index of a random conformation in the level
-            init_coords = np.moveaxis(arr[index], 0, -1) # Select init coords and reshape
-            learner.set_init_state(init_coords)
+            for i in range(0, len(ground_truth), sim_batch_size):
+                batch_ground_truth = ground_truth[i:i+sim_batch_size]
+                learner.set_ground_truth(batch_ground_truth)
+                
+                learner.step()
+                
+            learner.compute_epoch_stats()
+            learner.write_row()
+            val_tm_score = learner.get_val_loss()
             
-            learner.step()
+            ####################################################################################################################
+            # Compute test loss
+            epoch += 1
+            if epoch == 1 or (epoch % args.test_freq) == 0:
+                test_step(test_simulator, test_func=tm_score, epoch = epoch, steps = 2000,
+                          output_period = 2000, test_logger = test_logger, test_dict = test_dict)
+                
+            ####################################################################################################################
+            
+            if val_tm_score > 0.9:
+                inc_diff = True
 
-            val_rmsd = learner.get_val_loss()
-            
-            if warm_up > 0:
-                val_rmsds = np.append(val_rmsds, val_rmsd)
-            
-            if len(val_rmsds) == 10 and warm_up > 0:
-                av_100_val_rmsd = mean(val_rmsds)
-                if 0 <= abs(av_100_val_rmsd - prev_av_100_val_rmsd) <= 0.1 and av_100_val_rmsd < 2:
-                        inc_diff = True
-        
-                val_rmsds = np.array([])
-                prev_av_100_val_rmsd = av_100_val_rmsd
-                                    
             if inc_diff == True:
                 learner.save_model()
+                
+                if steps < args.max_steps:
+                    steps *= 2
+                    output_period *= 2
+                    learner.set_steps(steps)
+                    learner.set_output_period(output_period)
+                    inc_diff = False
+                else:
+                    steps = args.steps
+                    output_period = args.output_period
 
 def get_args(arguments=None):
     # fmt: off
@@ -154,9 +177,13 @@ def get_args(arguments=None):
     parser.add_argument('--load-model', default=None, help='Restart training using a model checkpoint')  # keep first
     parser.add_argument('--conf', '-c', type=open, action=LoadFromFile, help='Configuration yaml file')  # keep second
     parser.add_argument('--num-epochs', default=300, type=int, help='number of epochs')
-    parser.add_argument('--batch-size', default=None, type=int, help='batch size')
-    parser.add_argument('--ubatch-size', default=1, type=int, help= 'update batch size')
+    parser.add_argument('--batch-size', default=16, type=int, help='batch size')
+    parser.add_argument('--sim-batch-size', default=64, type=int, help='simulation batch size')
+    parser.add_argument('--max-grad-norm', default=0.7, type=float, help= 'Max grad norm for gradient clipping')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
+    parser.add_argument('--lr-decay', default=1, type=float, help='learning rate decay')
+    parser.add_argument('--min-lr', default=1e-4, type=float, help='minimum value of lr')
+    parser.add_argument('--test-freq', default=50, type=float, help='After how many epochs do a test simulation')
     parser.add_argument('--precision', type=int, default=32, choices=[16, 32], help='Floating point precision')
     parser.add_argument('--log-dir', '-l', default='/trainings', help='log file')
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
@@ -184,31 +211,29 @@ def get_args(arguments=None):
 
 
     # dataset specific
-    parser.add_argument('--reference_dir', default=None, help='Directory with reference data')
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
-    parser.add_argument('--datasets', default='/shared/carles/repo/torchmd-exp/datasets', type=str, 
+    parser.add_argument('--test_dir', default=None, help='Directory with test data')
+    parser.add_argument('--datasets', default='/shared/carles/torchmd-exp/datasets', type=str, 
                         help='Directory with the files with the names of train and val proteins')
-    
+    parser.add_argument('--train-set',  default=None, help='File with the names of the proteins in the train set ')
+    parser.add_argument('--test-set',  default=None, help='File with the names of the proteins in the val set ')
+
     # Torchmdexp specific
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
-    parser.add_argument('--forcefield', default="/shared/carles/repo/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
+    parser.add_argument('--forcefield', default="/shared/carles/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
     parser.add_argument('--forceterms', nargs='+', default=[], help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--cutoff', default=None, type=float, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--rfa', default=False, action='store_true', help='Enable reaction field approximation')
     parser.add_argument('--replicas', type=int, default=1, help='Number of different replicas to run')
     parser.add_argument('--switch_dist', default=None, type=float, help='Switching distance for LJ')
     parser.add_argument('--temperature',  default=350,type=float, help='Assign velocity from initial temperature in K')
-    parser.add_argument('--train-set',  default=None, help='File with the names of the proteins in the train set ')
-    parser.add_argument('--val-set',  default=None, help='File with the names of the proteins in the val set ')
     parser.add_argument('--force-precision', default='single', type=str, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--timestep', default=1, type=float, help='Timestep in fs')
-    parser.add_argument('--langevin_gamma',  default=0.1,type=float, help='Langevin relaxation ps^-1')
+    parser.add_argument('--langevin_gamma',  default=1,type=float, help='Langevin relaxation ps^-1')
     parser.add_argument('--langevin_temperature',  default=350,type=float, help='Temperature in K of the thermostat')
-    parser.add_argument('--max_steps',type=int,default=2000,help='Total number of simulation steps')
+    parser.add_argument('--steps',type=int,default=400,help='Total number of simulation steps')
+    parser.add_argument('--max_steps',type=int,default=400,help='Max Total number of simulation steps')
     parser.add_argument('--output-period',type=int,default=100,help='Pick one state every period')
-    parser.add_argument('--neff',type=int,default=0.9,help='Neff threshold')
-    parser.add_argument('--last_sn', default = None, help='Select if want to use last sn to start next simulations')
-    parser.add_argument('--min_rmsd',type=int,default=1,help='Min rmsd during training')
 
     # other args
     parser.add_argument('--derivative', default=True, type=bool, help='If true, take the derivative of the prediction w.r.t coordinates')
@@ -220,6 +245,7 @@ def get_args(arguments=None):
     parser.add_argument('--standardize', type=bool, default=False, help='If true, multiply prediction by dataset std and add mean')
     parser.add_argument('--reduce-op', type=str, default='add', choices=['add', 'mean'], help='Reduce operation to apply to atomic predictions')
     parser.add_argument('--exclusions', default=('bonds', 'angles', '1-4'), type=tuple, help='exclusions for the LJ or repulsionCG term')
+    parser.add_argument('--save-traj', default=False, type=tuple, help='Save training states')
 
     args = parser.parse_args(args=arguments)
     
