@@ -2,28 +2,31 @@
 Implementation of Differentiable Molecular Simulations with torchMD. 
 
 ## Installation
-Create a new conda environment using Python 3.8 via
+
+
+### Build and install
+
+- Get source code
+```
+git clone https://github.com/compsciencelab/torchmd-exp.git
+
+````
+
+- Create and install a new Conda enviroment
 
 ```
-conda create --name torchmd python=3.8
-conda activate torchmd 
+cd torchmd-exp
+conda env create -f environment.yml
+conda activate torchmdexp
+pip install -e .
 ```
-
-## Install PyTorch
-Then, install PyTorch according to your hardware specifications (more information here), e.g. for CUDA 11.1 and the most recent version of PyTorch use
+- Install torchmd-net
 ```
-conda install pytorch torchvision torchaudio cudatoolkit=11.1 -c pytorch -c nvidia
+cd ..
+git clone https://github.com/raimis/torchmd-net.git
+cd torchmd-net
+pip install -e .
 ```
-
-## Install PyTorch Geometric
-Install pytorch-geometric with its dependencies through
-
-```
-conda install pytorch-geometric -c rusty1s -c conda-forge
-```
-
-To install PyTorch Geometric via pip or for PyTorch < 1.8, see https://github.com/rusty1s/pytorch_geometric#installation.
-
 
 ## How does the model works?
 

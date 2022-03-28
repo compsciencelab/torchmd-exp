@@ -2,7 +2,6 @@ from ..base.worker import Worker
 import torch
 import time
 from statistics import mean
-from torchmdexp.losses.rmsd import rmsd
 from torchmdexp.scheme.utils import average_gradients, ray_get_and_free
 import numpy as np
 import os
@@ -58,7 +57,10 @@ class UWorker(Worker):
     
     def set_init_state(self, init_state):
         if self.sim_execution == "centralised" and self.reweighting_execution == "centralised":
-            self.local_worker.set_init_state(init_state)
+            self.updater.local_worker.set_init_state(init_state)
+    
+    def get_init_state(self):
+        return self.updater.local_we_worker.get_init_state()
     
     def set_ground_truth(self, ground_truth):
         
@@ -165,7 +167,7 @@ class Updater(Worker):
         
         if self.reweighting_execution == "centralised":
             num_batches = len(sys_names) // self.batch_size
-            
+
             # Update for all the simulated systems
             for batch in range(num_batches):
                 batch_names, sys_names = sys_names[:self.batch_size], sys_names[self.batch_size:]

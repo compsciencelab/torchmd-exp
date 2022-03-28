@@ -6,13 +6,10 @@ from torchmd.forces import Forces
 from torchmd.integrator import Integrator, maxwell_boltzmann
 from torchmd.parameters import Parameters
 from torchmd.systems import System
-from torchmdexp.nnp.calculator import External
+from torchmdexp.nnp.calculators import External
 import collections
-import itertools
-from torchmdexp.utils.get_native_coords import get_native_coords
 import numpy as np
 import copy
-import time
 
 class TorchMD_Sampler(Sampler):
     """
@@ -112,6 +109,7 @@ class TorchMD_Sampler(Sampler):
 
         # ------------------- Set the ground truth list (PDB coordinates) -----------
         self.ground_truth = {name: ground_truth[idx] for idx, name in enumerate(names)}
+        self.init_coords = None
         
         # Create the dictionary used to return states and prior energies
         self.sim_dict = collections.defaultdict(dict)
@@ -233,19 +231,7 @@ class TorchMD_Sampler(Sampler):
         for i in iterator:
             Ekin, Epot, T = integrator.step(niter=output_period)
             states[i-1] = integrator.systems.pos.to("cpu")
-            
-            # Extract prior energies and Fill dict
-            #if "bonds" in self.forceterms:
-            #    E_bonds = integrator.forces.E_bonds.to('cpu')
-            #    sample_dict = self._split_bonds_E(E_bonds, sample_dict, i) 
-            #if "dihedrals" in self.forceterms:
-            #    E_dih = integrator.forces.E_dihedrals.to('cpu')
-            #    sample_dict = self._split_dih_E(E_dih, sample_dict, i) 
-            #if "repulsioncg" in self.forceterms:
-            #    ava_idx_cut = integrator.forces.ava_idx_cut.to('cpu')
-            #    E_rep = integrator.forces.E_repulsioncg.to('cpu')
-            #    sample_dict = self._split_rep_E(E_rep, ava_idx_cut, sample_dict, i)             
-                
+                            
         sample_dict = self._split_states(states, sample_dict)
         self.sim_dict.update(sample_dict)
         return self.sim_dict
@@ -280,9 +266,9 @@ class TorchMD_Sampler(Sampler):
                     prev_div = div
                     axis = 0
                 if idx % 2 == 0:
-                    move[axis] = 1000 + 1000 * div
+                    move[axis] = 200 + 200 * div
                 else:
-                    move[axis] = -1000 + -1000 * div
+                    move[axis] = -200 + -200 * div
                     axis += 1
 
                 mol.dropFrames(keep=0)
@@ -315,11 +301,13 @@ class TorchMD_Sampler(Sampler):
         
         # Create simulation system
         mol = self.create_system(mols)
-        self.init_coords = mol.coords
-
+        
+        if self.init_coords is not None:
+            mol.coords = self.init_coords
+                        
         # Create embeddings and the external force
         embeddings = get_embeddings(mol, self.device, self.replicas)
-        external = External(self.nnp, embeddings, device = self.device, mode = 'val')
+        external = External(self.nnp, embeddings, device = self.device)
         
         # Add the embeddings to the sim_dict
         my_e = embeddings 
@@ -343,61 +331,9 @@ class TorchMD_Sampler(Sampler):
         
         integrator = Integrator(system, forces, self.timestep, gamma = self.langevin_gamma, 
                                 device = self.device, T= self.langevin_temperature)
-        integrator.systems.set_positions(self.init_coords)
-        integrator.systems.set_velocities(maxwell_boltzmann(forces.par.masses, T=self.temperature, replicas=self.replicas))
-
+                
         return integrator
 
-    def _split_bonds_E(self, E_bonds, sample_dict, i):
-        """
-        Computes the sum of the bonded energies of each molecule simulated.
-        And adds them to the sample_dict
-        """
-        
-        for idx, ml in enumerate(self.mls):
-            len_bonds = ml - 1 
-            E_bonds_mol, E_bonds = E_bonds[:len_bonds], E_bonds[len_bonds:]
-            sample_dict[self.names[idx]]['U_prior'][i-1] += E_bonds_mol.sum()
-        
-        return sample_dict
-    
-    def _split_dih_E(self, E_dih, sample_dict, i):
-        """
-        Computes the sum of the dihedrals energies of each molecule simulated.
-        And adds them to the sample_dict
-        """
-
-        for idx, ml in enumerate(self.mls):
-            len_dihedrals = ml - 3
-            E_dih_mol, E_dih = E_dih[:len_dihedrals], E_dih[len_dihedrals:]
-            sample_dict[self.names[idx]]['U_prior'][i-1] += E_dih_mol.sum()
-        
-        return sample_dict
-
-    def _split_rep_E(self, E_rep, ava_idx_cut, sample_dict, i):
-        """
-        Computes the sum of the repulsioncg energies of each molecule simulated.
-        And adds them to the sample_dict
-        """
-
-        mol_num = 0
-        len_rep = 0
-        prev_ml = 0
-        
-        for pair in ava_idx_cut: 
-            pair = pair.tolist()
-            if set(pair).intersection(set(range(prev_ml, prev_ml + self.mls[mol_num]))): 
-                len_rep += 1
-            else:
-                len_rep += 1
-                E_rep_mol, E_rep = E_rep[:len_rep], E_rep[len_rep:]
-                sample_dict[self.names[mol_num]]['U_prior'][i-1] += E_rep_mol.sum()
-                len_rep = 0
-                prev_ml += self.mls[mol_num]
-                mol_num += 1
-                
-        return sample_dict
-    
     def _split_states(self, states, sample_dict):
         """
         Split the states tensor and adds the coordinates of each molecule to the sample_dict

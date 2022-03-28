@@ -65,6 +65,9 @@ class Learner:
         """ Change init state """
         self.update_worker.set_init_state(init_state)
     
+    def get_init_state(self):
+        return self.update_worker.get_init_state()
+    
     def set_ground_truth(self, ground_truth):
         """ Change ground truth """
         self.update_worker.set_ground_truth(ground_truth)

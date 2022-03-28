@@ -1,18 +1,17 @@
 import argparse
 import torch
 from torchmdexp.samplers.torchmd_sampler import TorchMD_Sampler, moleculekit_system_factory
-from torchmdexp.scheme.torchmd_simulator_factory import torchmd_simulator_factory
 from torchmdexp.scheme.scheme import Scheme
 from torchmdexp.weighted_ensembles.weighted_ensemble import WeightedEnsemble
 from torchmdexp.learner import Learner
-from torchmdexp.nnp.module import LNNP
-from torchmdexp.losses.rmsd import rmsd
-from torchmdexp.losses.tmscore import tm_score
+from torchmdexp.metrics.native_contacts import q
+from torchmdexp.metrics.losses import Losses
 from torchmd.utils import LoadFromFile
 from torchmdnet import datasets, priors, models
 from torchmdnet.models import output_modules
 from torchmdnet.models.utils import rbf_class_mapping, act_class_mapping
 from torchmdnet.utils import LoadFromCheckpoint, save_argparse, number
+from torchmdnet.module import LNNP
 import ray
 from moleculekit.molecule import Molecule
 import numpy as np
@@ -21,6 +20,9 @@ from statistics import mean
 import os
 import random
 from test_set2 import prepare_test, test_step
+
+from torchmdexp.samplers.utils import get_native_coords, get_embeddings
+from torchmdexp.metrics.rmsd import rmsd
 
 def main():
     args = get_args()
@@ -33,13 +35,13 @@ def main():
     ray.init()
 
     # Hyperparameters
-    steps = args.max_steps
+    steps = args.steps
     output_period = args.output_period
     nstates = steps // output_period
     sim_batch_size = args.sim_batch_size
     batch_size = args.batch_size
     lr = args.lr
-    num_sim_workers = 2
+    num_sim_workers = 1
     
     # Define NNP
     nnp = LNNP(args)
@@ -50,7 +52,6 @@ def main():
     protein_factory = ProteinFactory(args.datasets, args.train_set)
     protein_factory.set_levels(args.levels_dir)
     train_ground_truth = protein_factory.get_ground_truth(0)
-    
     
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
@@ -63,11 +64,14 @@ def main():
     
     ####################################################################################################################
     # ** Define test simulator
-    test_simulator, test_dict, test_logger = prepare_test(args, moleculekit_system_factory, torchmd_sampler_factory, nnp)
+    if args.test_dir:
+        test_simulator, test_dict, test_logger = prepare_test(args, moleculekit_system_factory, torchmd_sampler_factory, nnp)
     ####################################################################################################################
     
-    # 2. Define the Weighted Ensemble that computes the ensemble of states    
-    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, loss_fn=rmsd, val_fn=tm_score,
+    # 2. Define the Weighted Ensemble that computes the ensemble of states   
+    loss = Losses(0.0, fn_name='margin_ranking', margin=-0.5)
+    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, metric = rmsd, loss_fn=loss,
+                                                                val_fn=rmsd,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
                                                                 replicas = args.replicas, precision = torch.double)
 
@@ -82,13 +86,13 @@ def main():
                    'nnp': nnp,
                    'device': args.device,
                    'weighted_ensemble_factory': weighted_ensemble_factory,
-                   'loss_fn': rmsd
+                   'loss_fn': loss
     })
 
     # Simulation specs
     params.update({'num_sim_workers': num_sim_workers,
-                   'sim_worker_resources': {"num_gpus": 1}, 
-                   'add_local_worker': False
+                   'sim_worker_resources': {"num_gpus": 1, "num_cpus": 16.0}, 
+                   'add_local_worker': True
     })
 
     # Reweighting specs
@@ -115,7 +119,9 @@ def main():
     epoch = 0    
     num_levels = protein_factory.get_num_levels()
     
-
+    init_state = None
+    min_val_loss = args.max_val_loss
+    
     # 6. Train
     for level in range(num_levels):
                 
@@ -123,12 +129,13 @@ def main():
         
         # Update level
         ground_truth = protein_factory.get_ground_truth(level)
+        init_states = protein_factory.get_level(level)
         learner.level_up()
         
         # Change lr
         if level >= 1:
             lr *= args.lr_decay
-            lr = 1e-4 if lr < 1e-4 else lr
+            lr = args.min_lr if lr < args.min_lr else lr
             learner.set_lr(lr)
             
         # Set sim batch size:
@@ -139,28 +146,46 @@ def main():
             
             for i in range(0, len(ground_truth), sim_batch_size):
                 batch_ground_truth = ground_truth[i:i+sim_batch_size]
+                #batch_init_states = init_states[i:i+sim_batch_size]
+
                 learner.set_ground_truth(batch_ground_truth)
+                                
+                #learner.set_init_state(batch_init_states)                
                 
                 learner.step()
-                
+ 
             learner.compute_epoch_stats()
             learner.write_row()
-            val_tm_score = learner.get_val_loss()
+            val_loss = learner.get_val_loss()
             
             ####################################################################################################################
             # Compute test loss
             epoch += 1
-            if epoch == 1 or (epoch % 20) == 0:
-                test_step(test_simulator, test_func=tm_score, epoch = epoch, steps = 2000,
-                          output_period = 2000, test_logger = test_logger, test_dict = test_dict)
+            #if args.test_set:
+            #    if (epoch == 1 or (epoch % args.test_freq) == 0):
+            #        test_step(test_simulator, test_func=tm_score, epoch = epoch, steps = 2000,
+            #                  output_period = 2000, test_logger = test_logger, test_dict = test_dict)
                 
             ####################################################################################################################
             
-            if val_tm_score > 0.9:
+            if val_loss < args.max_val_loss and val_loss < min_val_loss:
                 inc_diff = True
-
+                min_val_loss = val_loss
+                #learner.save_model()
+            
+            if (epoch % 100) == 0:
+                lr *= args.lr_decay
+                learner.set_lr(lr)
+            
             if inc_diff == True:
                 learner.save_model()
+                inc_diff = False
+                
+                if steps < args.max_steps:
+                    steps += args.steps
+                    output_period += args.output_period
+                    learner.set_steps(steps)
+                    learner.set_output_period(output_period)
 
 def get_args(arguments=None):
     # fmt: off
@@ -171,8 +196,11 @@ def get_args(arguments=None):
     parser.add_argument('--batch-size', default=16, type=int, help='batch size')
     parser.add_argument('--sim-batch-size', default=64, type=int, help='simulation batch size')
     parser.add_argument('--max-grad-norm', default=0.7, type=float, help= 'Max grad norm for gradient clipping')
+    parser.add_argument('--max-val-loss', default=1.5, type=float, help= 'Max val loss to increase level')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--lr-decay', default=1, type=float, help='learning rate decay')
+    parser.add_argument('--min-lr', default=1e-4, type=float, help='minimum value of lr')
+    parser.add_argument('--test-freq', default=50, type=float, help='After how many epochs do a test simulation')
     parser.add_argument('--precision', type=int, default=32, choices=[16, 32], help='Floating point precision')
     parser.add_argument('--log-dir', '-l', default='/trainings', help='log file')
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
@@ -220,7 +248,8 @@ def get_args(arguments=None):
     parser.add_argument('--timestep', default=1, type=float, help='Timestep in fs')
     parser.add_argument('--langevin_gamma',  default=1,type=float, help='Langevin relaxation ps^-1')
     parser.add_argument('--langevin_temperature',  default=350,type=float, help='Temperature in K of the thermostat')
-    parser.add_argument('--max_steps',type=int,default=2000,help='Total number of simulation steps')
+    parser.add_argument('--steps',type=int,default=400,help='Total number of simulation steps')
+    parser.add_argument('--max_steps',type=int,default=400,help='Max Total number of simulation steps')
     parser.add_argument('--output-period',type=int,default=100,help='Pick one state every period')
 
     # other args

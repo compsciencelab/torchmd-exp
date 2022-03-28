@@ -6,8 +6,9 @@ from torchmdexp.scheme.scheme import Scheme
 from torchmdexp.weighted_ensembles.weighted_ensemble import WeightedEnsemble
 from torchmdexp.learner import Learner
 from torchmdexp.nnp.module import LNNP
-from torchmdexp.metrics.l2_rmsd import l2_rmsd
-from torchmdexp.metrics.tmscore import tm_score
+from torchmdexp.metrics.native_contacts import q
+from torchmdexp.metrics.rmsd import rmsd
+from torchmdexp.metrics.losses import Losses
 from torchmd.utils import LoadFromFile
 from torchmdnet import datasets, priors, models
 from torchmdnet.models import output_modules
@@ -19,8 +20,6 @@ import numpy as np
 from torchmdexp.datasets.proteinfactory import ProteinFactory
 from statistics import mean
 import os
-import random
-from test_set2 import prepare_test, test_step
 
 def main():
     args = get_args()
@@ -39,7 +38,7 @@ def main():
     sim_batch_size = args.sim_batch_size
     batch_size = args.batch_size
     lr = args.lr
-    num_sim_workers = 2
+    num_sim_workers = 1
     
     # Define NNP
     nnp = LNNP(args)
@@ -62,11 +61,14 @@ def main():
     
     ####################################################################################################################
     # ** Define test simulator
-    test_simulator, test_dict, test_logger = prepare_test(args, moleculekit_system_factory, torchmd_sampler_factory, nnp)
+    if args.test_dir:
+        test_simulator, test_dict, test_logger = prepare_test(args, moleculekit_system_factory, torchmd_sampler_factory, nnp)
     ####################################################################################################################
     
-    # 2. Define the Weighted Ensemble that computes the ensemble of states    
-    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, loss_fn=l2_rmsd, val_fn=tm_score,
+    # 2. Define the Weighted Ensemble that computes the ensemble of states   
+    loss = Losses(1.0)
+    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, metric = q, loss_fn=loss,
+                                                                val_fn=q,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
                                                                 replicas = args.replicas, precision = torch.double)
 
@@ -81,13 +83,13 @@ def main():
                    'nnp': nnp,
                    'device': args.device,
                    'weighted_ensemble_factory': weighted_ensemble_factory,
-                   'loss_fn': l2_rmsd
+                   'loss_fn': loss
     })
 
     # Simulation specs
     params.update({'num_sim_workers': num_sim_workers,
-                   'sim_worker_resources': {"num_gpus": 1}, 
-                   'add_local_worker': False
+                   'sim_worker_resources': {"num_gpus": 1, "num_cpus": 16.0}, 
+                   'add_local_worker': True
     })
 
     # Reweighting specs
@@ -114,7 +116,9 @@ def main():
     epoch = 0    
     num_levels = protein_factory.get_num_levels()
     
-
+    init_state = None
+    max_val_loss = args.max_val_loss
+    
     # 6. Train
     for level in range(num_levels):
                 
@@ -122,6 +126,7 @@ def main():
         
         # Update level
         ground_truth = protein_factory.get_ground_truth(level)
+        init_states = protein_factory.get_level(level)
         learner.level_up()
         
         # Change lr
@@ -138,39 +143,33 @@ def main():
             
             for i in range(0, len(ground_truth), sim_batch_size):
                 batch_ground_truth = ground_truth[i:i+sim_batch_size]
+                batch_init_states = init_states[i:i+sim_batch_size]
+                
                 learner.set_ground_truth(batch_ground_truth)
-                
+                                
+                learner.set_init_state(batch_init_states)                
+
                 learner.step()
-                
+ 
             learner.compute_epoch_stats()
             learner.write_row()
-            val_tm_score = learner.get_val_loss()
+            val_loss = learner.get_val_loss()
             
-            ####################################################################################################################
-            # Compute test loss
-            epoch += 1
-            if epoch == 1 or (epoch % args.test_freq) == 0:
-                test_step(test_simulator, test_func=tm_score, epoch = epoch, steps = 2000,
-                          output_period = 2000, test_logger = test_logger, test_dict = test_dict)
-                
-            ####################################################################################################################
             
-            if val_tm_score > 0.9:
-                inc_diff = True
+            if val_loss > args.max_val_loss and val_loss > max_val_loss:
+                #inc_diff = True
+                max_val_loss = val_loss
+                learner.save_model()
+                lr *= args.lr_decay
+                learner.set_lr(lr)
+            
+            #if (epoch % 100) == 0:
+            #    lr *= args.lr_decay
+            #    learner.set_lr(lr)
 
             if inc_diff == True:
                 learner.save_model()
                 
-                if steps < args.max_steps:
-                    steps *= 2
-                    output_period *= 2
-                    learner.set_steps(steps)
-                    learner.set_output_period(output_period)
-                    inc_diff = False
-                else:
-                    steps = args.steps
-                    output_period = args.output_period
-
 def get_args(arguments=None):
     # fmt: off
     parser = argparse.ArgumentParser(description='Training')
@@ -180,6 +179,7 @@ def get_args(arguments=None):
     parser.add_argument('--batch-size', default=16, type=int, help='batch size')
     parser.add_argument('--sim-batch-size', default=64, type=int, help='simulation batch size')
     parser.add_argument('--max-grad-norm', default=0.7, type=float, help= 'Max grad norm for gradient clipping')
+    parser.add_argument('--max-val-loss', default=0.9, type=float, help= 'Max val loss to increase level')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--lr-decay', default=1, type=float, help='learning rate decay')
     parser.add_argument('--min-lr', default=1e-4, type=float, help='minimum value of lr')
