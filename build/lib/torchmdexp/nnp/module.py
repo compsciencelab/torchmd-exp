@@ -1,13 +1,9 @@
 import torch
-from pytorch_lightning import LightningModule
 from torchmdnet.models.model import create_model, load_model
 from torch_scatter import scatter
 
-
-
-class LNNP(LightningModule):
+class NNP(nn.Module):
     def __init__(self, hparams, prior_model=None, mean=None, std=None):
-        super(LNNP, self).__init__()
         self.save_hyperparameters(hparams)
         
         if self.hparams.load_model:
@@ -19,20 +15,15 @@ class LNNP(LightningModule):
             
         else:
             self.model = create_model(self.hparams, prior_model, mean, std)
-            self.model.to(self.hparams.device)
-    
-    def configure_optimizers(self):
-        optimizer = AdamW(
-            self.model.parameters(),
-            lr=self.hparams.lr,
-        )
-        scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, step_size=self.hparams.step_size, gamma=0.8
-        )
-        return [optimizer], [scheduler]
-    
+            self.model.to(self.hparams.device)    
     
     def forward(self, z, pos, batch=None):
+        return self.model(z, pos, batch=batch)
+    
+    
+    
+    
+    a = '''def forward(self, z, pos, batch=None):
         return self.model(z, pos, batch=batch)
 
     def training_step(self, z, pos, batch):
@@ -56,4 +47,4 @@ class LNNP(LightningModule):
             Upot, force = self(z, pos, batch)
             
         Upot = scatter(Upot, batch, dim=0, reduce='add')
-        return Upot
+        return Upot'''

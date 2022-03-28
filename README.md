@@ -2,17 +2,30 @@
 Implementation of Differentiable Molecular Simulations with torchMD. 
 
 ## Installation
-Create a new conda environment using Python 3.8 via
+
+
+### Build and install
+
+- Get source code
+```
+git clone https://github.com/compsciencelab/torchmd-exp.git
+
+````
+
+- Create and install a new Conda enviroment
 
 ```
+cd torchmd-exp
 conda env create -f environment.yml
 conda activate torchmdexp
+pip install -e .
+```
+- Install torchmd-net
+```
+cd ..
 git clone https://github.com/raimis/torchmd-net.git
-git clone https://github.com/compsciencelab/torchmd-exp.git
 cd torchmd-net
 pip install -e .
-cd ../torchmd-exp
-pip install -e
 ```
 
 ## How does the model works?

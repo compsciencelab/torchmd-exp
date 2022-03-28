@@ -1,9 +1,7 @@
-import copy
 import torch
 from torchmd.forcefields.forcefield import ForceField
 from torchmd.forces import Forces
 from torchmd.parameters import Parameters
-import itertools
 from statistics import mean
 import numpy as np
 
@@ -15,6 +13,7 @@ class WeightedEnsemble:
         nnp,
         nstates,
         lr,
+        metric,
         loss_fn,
         val_fn,
         max_grad_norm = 550,
@@ -24,6 +23,7 @@ class WeightedEnsemble:
         precision = torch.double,
      ):
         self.nstates = nstates
+        self.metric = metric
         self.loss_fn = loss_fn
         self.val_fn = val_fn
         self.max_grad_norm = max_grad_norm
@@ -39,10 +39,15 @@ class WeightedEnsemble:
         # ------------------- Loss ----------------------------------
         self.loss = torch.tensor(0, dtype = precision, device=device)
         
+        # ------------------- Create the states ---------------------
+        self.states = None
+        self.init_coords = None
+        
     @classmethod
     def create_factory(cls,
                        nstates,
                        lr,
+                       metric,
                        loss_fn,
                        val_fn,
                        max_grad_norm = 550,
@@ -76,6 +81,7 @@ class WeightedEnsemble:
             return cls(nnp,
                        nstates,
                        lr,
+                       metric,
                        loss_fn,
                        val_fn,
                        max_grad_norm,
@@ -86,7 +92,7 @@ class WeightedEnsemble:
                       )
         return create_weighted_ensemble_instance
     
-    def _extEpot(self, states, embeddings, stage):
+    def _extEpot(self, states, embeddings, mode="train"):
         
         # Prepare pos, embeddings and batch tensors
         pos = states.to(self.device).type(torch.float32).reshape(-1, 3)
@@ -95,60 +101,61 @@ class WeightedEnsemble:
             embeddings.size(1)
         )
         embeddings = embeddings.reshape(-1).to(self.device)
-        
-        # Compute external energies
-        if stage == "train":
-            ext_energies = self.nnp.training_step(embeddings, pos, batch).squeeze(1)
-        elif stage == "val":
-            ext_energies = self.nnp.validation_step(embeddings, pos, batch).squeeze(1)
                 
-        return ext_energies
+        # Compute external energies
+        if mode == "train":
+            ext_energies, ext_forces = self.nnp(embeddings, pos, batch)
+        elif mode == "val":
+            ext_energies, ext_forces = self.nnp(embeddings, pos, batch)
+        
+        ext_forces.detach()
+        return ext_energies.squeeze(1)
                        
     def _weights(self, states, embeddings, U_prior):
         
         # Compute external Epot and create a new eternal Epot detached 
-        U_ext = self._extEpot(states, embeddings, "train")
+        U_ext = self._extEpot(states, embeddings, mode="train")
         U_ext_hat = U_ext.detach()
         
         U_prior = U_prior.to(U_ext.device)
-        
+
         U_ref = torch.add(U_prior, U_ext_hat)
         U = torch.add(U_prior, U_ext)
 
         exponentials = torch.exp(-torch.divide(torch.subtract(U, U_ref), self.T*BOLTZMAN))
         weights = torch.divide(exponentials, exponentials.sum())
-
-        return weights
+        return weights, U_ext_hat
     
     def _effectiven(self, weights):
         
         lnwi = torch.log(weights)
-        neff = torch.exp(-torch.sum(torch.multiply(weights, lnwi), axis=1)).detach()
+        neff = torch.exp(-torch.sum(torch.multiply(weights, lnwi), axis=0)).detach()
         
         return neff
     
-    def compute(self, states, embeddings, U_prior, neff_threshold=None):
+    def compute(self, states, ground_truth, embeddings, U_prior, neff_threshold=None):
         
-        weights = self._weights(states, embeddings, U_prior)
+        weights, U_ext_hat = self._weights(states, embeddings, U_prior)
         
         n = len(weights)
         
         # Compute the weighted ensemble of the conformations 
         states = states.to(self.device)
-        w_ensemble = torch.multiply(weights.unsqueeze(1).unsqueeze(1), states).sum(0) 
+                
+        obs = torch.tensor([self.metric(state, ground_truth) for state in states], device = self.device, dtype = self.precision)
+        w_ensemble = torch.multiply(weights, obs).sum(0) 
         
         return w_ensemble
     
     def compute_loss(self, ground_truth, states, embeddings, U_prior):
         
-        w_e = self.compute(states, embeddings, U_prior)
-        
-        loss = self.loss_fn(w_e, ground_truth)  
+        w_e = self.compute(states, ground_truth, embeddings, U_prior)
+        loss = self.loss_fn(w_e)  
         return loss
         
     
     def compute_gradients(self, ground_truth, states, embeddings, U_prior, grads_to_cpu=True):
-        
+                
         self.optimizer.zero_grad()
         loss = self.compute_loss(ground_truth, states, embeddings, U_prior)
         loss.backward()
@@ -172,14 +179,18 @@ class WeightedEnsemble:
     
     def compute_val_loss(self, ground_truth, states, **kwargs):
         
+        # Compute val loss
+        
         n_states = 'last'
         if n_states == 'last':
-            val_rmsd = self.val_fn(ground_truth, states[-1]).item()
+            val_rmsd = self.val_fn(states[-1], ground_truth).item()
         elif n_states == 'last10':
             val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states[-10:]])
         else:
-            val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states])
-                
+            val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states])   
+        
+        #self.init_coords = states[-1]
+        
         return val_rmsd
         
     def apply_gradients(self, gradients):
@@ -197,4 +208,7 @@ class WeightedEnsemble:
     
     def get_native_U(self, ground_truth, embeddings):
         ground_truth = ground_truth.unsqueeze(0)
-        return self._extEpot(ground_truth, embeddings, stage='val')
+        return self._extEpot(ground_truth, embeddings, mode='val')
+    
+    def get_init_state(self):
+        return self.init_coords

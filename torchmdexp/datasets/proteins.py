@@ -42,9 +42,9 @@ class ProteinDataset(Dataset):
     def _load_molecules(self):
         molecules = []
         for protein in self.ids:
-            
             structure = os.path.join(self.data_dir, protein + '.pdb')
             frames = os.path.join(self.data_dir, protein + '.xtc')
+
             if os.path.isfile(structure):
                 self.set_size += 1
                 mol = Molecule(structure)

@@ -21,6 +21,7 @@ class WeightedEnsembleWorker(Worker):
         # HERE PUT NNP AND THEN THIS WILL BE USED TO GET WEIGHTS
         
         # Create Propagator instance
+        self.nnp = self.nnp.to(dev)
         self.weighted_ensemble = weighted_ensemble_factory(self.nnp, dev, **worker_info)
         
         # Print worker information
@@ -45,3 +46,6 @@ class WeightedEnsembleWorker(Worker):
     
     def get_native_U(self, ground_truth, embeddings):
         return self.weighted_ensemble.get_native_U(ground_truth, embeddings).item()
+    
+    def get_init_state(self):
+        return self.weighted_ensemble.get_init_state()
