@@ -22,7 +22,7 @@ class SimWorker(Worker):
         
         # Create Propagator instance
         self.simulator = sim_factory(system, nnp, dev, **worker_info)
-
+        
         # Print worker information
         self.print_worker_info()
         

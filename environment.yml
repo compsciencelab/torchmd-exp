@@ -1,4 +1,4 @@
-name: torchmdexp
+name: torchmd-exp
 channels:
   - raimis
   - mmh
@@ -15,6 +15,7 @@ dependencies:
   - python==3.9
   - pytorch==1.10.0
   - moleculekit
+  - raimis/label/rc::openmm-torch==0.7rc2
   # The official PyTorch Geometric package is not compatible with conda-forge,
   # while the package on conda-forge is broken
   # (https://github.com/pyg-team/pytorch_geometric/issues/3660).

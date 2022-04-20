@@ -1,7 +1,4 @@
 import torch
-from torchmd.forcefields.forcefield import ForceField
-from torchmd.forces import Forces
-from torchmd.parameters import Parameters
 from statistics import mean
 import numpy as np
 
@@ -34,7 +31,7 @@ class WeightedEnsemble:
         
         # ------------------- Neural Network Potential and Optimizer -----------------
         self.nnp = nnp
-        self.optimizer = torch.optim.Adam(self.nnp.model.parameters(), lr=lr)
+        self.optimizer = torch.optim.Adam(self.nnp.parameters(), lr=lr)
 
         # ------------------- Loss ----------------------------------
         self.loss = torch.tensor(0, dtype = precision, device=device)
