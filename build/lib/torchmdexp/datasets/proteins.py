@@ -55,7 +55,7 @@ class ProteinDataset(Dataset):
                 self.set_size += 1
                 mol = Molecule(frames)
                 molecules.append(mol)
-                    
+                     
         return molecules
     
     def __getitem__(self, index):
@@ -108,15 +108,10 @@ class ProteinDataset(Dataset):
 
         if dihedrals:
 
-            dihedrals = np.concatenate(
-                (
-                    np.arange(n - 3).reshape([n - 3, 1]),
-                    (np.arange(1, n - 2).reshape([n - 3, 1])),
-                    (np.arange(2, n - 1).reshape([n - 3, 1])),
-                    (np.arange(3, n).reshape([n - 3, 1])),
-                ),
-                axis = 1,
-            )
+            dihedrals = np.concatenate((np.arange(0,n-3).reshape([-1,1]),
+                           np.arange(1,n-2).reshape([-1,1]),
+                           np.arange(2,n-1).reshape([-1,1]),
+                           np.arange(3,n).reshape([-1,1])), axis = 1)
         else:
             dihedrals = np.empty([0, 4], dtype=np.int32)
 

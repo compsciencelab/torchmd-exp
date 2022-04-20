@@ -1,5 +1,5 @@
-from .base import Sampler
-from .utils import get_embeddings, get_native_coords
+from ..base import Sampler
+from ..utils import get_embeddings, get_native_coords, create_system
 import torch
 from torchmd.forcefields.forcefield import ForceField
 from torchmd.forces import Forces
@@ -10,6 +10,8 @@ from torchmdexp.nnp.calculators import External
 import collections
 import numpy as np
 import copy
+
+from torchmdexp.datasets.utils import CA_MAP, CACB_MAP
 
 class TorchMD_Sampler(Sampler):
     """
@@ -247,42 +249,9 @@ class TorchMD_Sampler(Sampler):
                 Size = 
         """
         
-        mol = self.create_system(init_states)
+        mol = create_system(init_states)
         self.init_coords = mol.coords
-    
-    def create_system(self, molecules):
         
-        prev_div = 0 
-        axis = 0
-        move = np.array([0, 0, 0,])
-
-        for idx, mol in enumerate(molecules):
-            if idx == 0:
-                mol.dropFrames(keep=0)
-                batch = copy.deepcopy(mol)
-            else:
-                div = idx // 6
-                if div != prev_div:
-                    prev_div = div
-                    axis = 0
-                if idx % 2 == 0:
-                    move[axis] = 200 + 200 * div
-                else:
-                    move[axis] = -200 + -200 * div
-                    axis += 1
-
-                mol.dropFrames(keep=0)
-
-                mol.moveBy(move)
-                move = np.array([0, 0, 0])
-
-                ml = len(batch.coords)
-                batch.append(mol) # join molecules
-                batch.box = np.array([[0],[0],[0]], dtype = np.float32)
-                batch.dihedrals = np.append(batch.dihedrals, mol.dihedrals + ml, axis=0)
-        
-        return batch
-    
     def set_weights(self, weights):
         self.nnp.load_state_dict(weights)
     
@@ -300,7 +269,7 @@ class TorchMD_Sampler(Sampler):
     def _set_integrator(self, mols, mls):
         
         # Create simulation system
-        mol = self.create_system(mols)
+        mol = create_system(mols)
         
         if self.init_coords is not None:
             mol.coords = self.init_coords
@@ -315,7 +284,7 @@ class TorchMD_Sampler(Sampler):
             mol_embeddings, my_e = my_e[:, :ml], my_e[:, ml:]
             self.sim_dict[self.names[idx]]['embeddings'] = mol_embeddings.to('cpu')
                 
-        # Create forces
+        # Create forces        
         ff = ForceField.create(mol, self.forcefield)        
         parameters = Parameters(ff, mol, terms=self.forceterms, device=self.device) 
         
@@ -342,36 +311,3 @@ class TorchMD_Sampler(Sampler):
             states_mol, states = states[:, :ml, :], states[:, ml:, :]
             sample_dict[self.names[idx]]['states'] = states_mol
         return sample_dict
-    
-    
-def moleculekit_system_factory(molecules, num_workers):
-
-    prev_div = 0 
-    axis = 0
-    move = np.array([0, 0, 0,])
-    
-    batch_size = len(molecules) // num_workers
-    systems = []
-    worker_info = []
-    
-    for i in range(num_workers):
-        batch_molecules, molecules = molecules[:batch_size], molecules[batch_size:]
-        batch_mls = []
-        batch_gt = [] 
-        batch_names = []
-        
-        for idx, mol in enumerate(batch_molecules):
-
-            native_coords = get_native_coords(mol)
-            name = mol.viewname[:-4]
-            ml = len(mol.coords)
-
-            batch_mls.append(ml)
-            batch_gt.append(native_coords)
-            batch_names.append(name)
-            
-        systems.append(batch_molecules)
-        info = {'mls': batch_mls, 'ground_truth': batch_gt, 'names': batch_names}
-        worker_info.append(info)
-        
-    return systems, worker_info

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import copy
 
 def get_embeddings(mol, device, replicas):
     """ 
@@ -32,3 +33,103 @@ def get_native_coords(mol, device='cpu'):
     pos.to(device)
     
     return pos
+
+def moleculekit_system_factory(molecules, num_workers):
+    
+    batch_size = len(molecules) // num_workers
+    systems = []
+    worker_info = []
+    
+    for i in range(num_workers):
+        batch_molecules, molecules = molecules[:batch_size], molecules[batch_size:]
+        batch_mls = []
+        batch_gt = [] 
+        batch_names = []
+        
+        for idx, mol in enumerate(batch_molecules):
+
+            native_coords = get_native_coords(mol)
+            name = mol.viewname[:-4]
+            ml = len(mol.coords)
+
+            batch_mls.append(ml)
+            batch_gt.append(native_coords)
+            batch_names.append(name)
+            
+        systems.append(batch_molecules)
+        info = {'mls': batch_mls, 'ground_truth': batch_gt, 'names': batch_names}
+        worker_info.append(info)
+        
+    return systems, worker_info
+
+def create_system(molecules, dist = 200):
+    """
+    Return a system with multiple molecules separated by a given distance. 
+    
+    Parameters:
+    -------------
+    molecules: list
+        List of moleculekit objects
+    dist: float
+        Minimum distance separation between the centers of the molecules
+    
+    Return:
+    -------------
+    batch: moleculekit object
+        Moleculekit object with all the molecules.
+    """
+    prev_div = 0 
+    axis = 0
+    move = np.array([0, 0, 0,])
+
+    for idx, mol in enumerate(molecules):
+        if idx == 0:
+            mol.dropFrames(keep=0)
+            batch = copy.deepcopy(mol)
+        else:
+            div = idx // 6
+            if div != prev_div:
+                prev_div = div
+                axis = 0
+            if idx % 2 == 0:
+                move[axis] = dist + dist * div
+            else:
+                move[axis] = -dist + -dist * div
+                axis += 1
+
+            mol.dropFrames(keep=0)
+
+            mol.moveBy(move)
+            move = np.array([0, 0, 0])
+
+            ml = len(batch.coords)
+            batch.append(mol) # join molecules
+            batch.box = np.array([[0],[0],[0]], dtype = np.float32)
+            batch.dihedrals = np.append(batch.dihedrals, mol.dihedrals + ml, axis=0)
+
+    return batch
+
+AA2INT = {'ALA':1,
+         'GLY':2,
+         'PHE':3,
+         'TYR':4,
+          'ASP':5,
+          'GLU':6,
+          'TRP':7,
+          'PRO':8,
+          'ASN':9,
+          'GLN':10,
+          'HIS':11,
+          'HSE':11,
+          'HSD':11,
+          'SER':12,
+          'THR':13,
+          'VAL':14,
+          'MET':15,
+          'CYS':16,
+          'NLE':17,
+          'ARG':19,
+          'LYS':20,
+          'LEU':21,
+          'ILE':22
+         }

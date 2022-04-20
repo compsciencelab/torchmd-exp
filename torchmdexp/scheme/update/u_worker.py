@@ -80,7 +80,7 @@ class UWorker(Worker):
         
         if self.sim_execution == "centralised":
             self.updater.local_worker.save_model(path)
-        
+
         elif self.sim_execution == "parallelised":
             self.updater.remote_workers[0].save_model.remote(path)
             #sim_results = ray_get_and_free(pending)
