@@ -24,6 +24,7 @@ from test_set2 import prepare_test, test_step
 from torchmdnet.optimize import optimize as optimize_model
 from torchmdexp.samplers.utils import get_native_coords, get_embeddings
 from torchmdexp.metrics.rmsd import rmsd
+from torchmdexp.metrics.tmscore import tm_score
 
 def main():
     args = get_args()
@@ -70,7 +71,7 @@ def main():
     ####################################################################################################################
     
     # 2. Define the Weighted Ensemble that computes the ensemble of states   
-    loss = Losses(0.0, fn_name='margin_ranking', margin=-1.0)
+    loss = Losses(0.0, fn_name='margin_ranking', margin=-1.0, y=1.0)
     weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, metric = rmsd, loss_fn=loss,
                                                                 val_fn=rmsd,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
