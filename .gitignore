@@ -10,4 +10,5 @@ scripts/simulations
 .nfs*
 data/
 scripts/utils/test_sim.ipynb
-build
+build/
+scripts/utils/
