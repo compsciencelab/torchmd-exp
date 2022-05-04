@@ -1,25 +1,30 @@
 import argparse
 import torch
-from torchmdexp.samplers.torchmd_sampler import TorchMD_Sampler, moleculekit_system_factory
-from torchmdexp.scheme.torchmd_simulator_factory import torchmd_simulator_factory
+from torchmdexp.samplers.torchmd.torchmd_sampler import TorchMD_Sampler
+from torchmdexp.samplers.utils import moleculekit_system_factory
 from torchmdexp.scheme.scheme import Scheme
 from torchmdexp.weighted_ensembles.weighted_ensemble import WeightedEnsemble
 from torchmdexp.learner import Learner
-from torchmdexp.nnp.module import LNNP
 from torchmdexp.metrics.native_contacts import q
-from torchmdexp.metrics.rmsd import rmsd
 from torchmdexp.metrics.losses import Losses
 from torchmd.utils import LoadFromFile
 from torchmdnet import datasets, priors, models
 from torchmdnet.models import output_modules
 from torchmdnet.models.utils import rbf_class_mapping, act_class_mapping
 from torchmdnet.utils import LoadFromCheckpoint, save_argparse, number
+from torchmdnet.module import LNNP
 import ray
 from moleculekit.molecule import Molecule
 import numpy as np
 from torchmdexp.datasets.proteinfactory import ProteinFactory
 from statistics import mean
 import os
+import random
+from test_set2 import prepare_test, test_step
+from torchmdnet.optimize import optimize as optimize_model
+from torchmdexp.samplers.utils import get_native_coords, get_embeddings
+from torchmdexp.metrics.rmsd import rmsd
+from torchmdexp.metrics.tmscore import tm_score
 
 def main():
     args = get_args()
@@ -38,10 +43,10 @@ def main():
     sim_batch_size = args.sim_batch_size
     batch_size = args.batch_size
     lr = args.lr
-    num_sim_workers = 1
+    num_sim_workers = args.num_sim_workers
     
     # Define NNP
-    nnp = LNNP(args)
+    nnp = LNNP(args)        
     optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
 
     # Load training molecules
@@ -66,9 +71,9 @@ def main():
     ####################################################################################################################
     
     # 2. Define the Weighted Ensemble that computes the ensemble of states   
-    loss = Losses(1.0)
-    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, metric = q, loss_fn=loss,
-                                                                val_fn=q,
+    loss = Losses(0.0, fn_name='margin_ranking', margin=-1.0, y=1.0)
+    weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, metric = rmsd, loss_fn=loss,
+                                                                val_fn=rmsd,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
                                                                 replicas = args.replicas, precision = torch.double)
 
@@ -88,8 +93,8 @@ def main():
 
     # Simulation specs
     params.update({'num_sim_workers': num_sim_workers,
-                   'sim_worker_resources': {"num_gpus": 1, "num_cpus": 16.0}, 
-                   'add_local_worker': True
+                   'sim_worker_resources': {"num_gpus": args.num_gpus, "num_cpus": args.num_cpus}, 
+                   'add_local_worker': args.local_worker
     })
 
     # Reweighting specs
@@ -109,7 +114,7 @@ def main():
 
     # 4. Define Learner
     learner = Learner(scheme, steps, output_period, train_names=train_names, log_dir=args.log_dir, save_traj=args.save_traj,
-                      keys = ('level', 'steps', 'Train loss', 'Val loss', 'Native Upot'))    
+                      keys = ('level', 'steps', 'Train loss', 'Val loss'))    
 
     
     # 5. Define epoch and Levels
@@ -117,7 +122,7 @@ def main():
     num_levels = protein_factory.get_num_levels()
     
     init_state = None
-    max_val_loss = args.max_val_loss
+    min_val_loss = args.max_val_loss
     
     # 6. Train
     for level in range(num_levels):
@@ -141,34 +146,42 @@ def main():
             
         while inc_diff == False:
             
+            ground_truth = ground_truth[:]
+            random.shuffle(ground_truth) # rdmize systems
+
             for i in range(0, len(ground_truth), sim_batch_size):
                 batch_ground_truth = ground_truth[i:i+sim_batch_size]
-                batch_init_states = init_states[i:i+sim_batch_size]
                 
                 learner.set_ground_truth(batch_ground_truth)
                                 
-                learner.set_init_state(batch_init_states)                
-
                 learner.step()
  
             learner.compute_epoch_stats()
             learner.write_row()
             val_loss = learner.get_val_loss()
             
+            ####################################################################################################################
+            # Compute test loss
+            epoch += 1
+            if args.test_set:
+                if (epoch == 1 or (epoch % args.test_freq) == 0):
+                    test_step(test_simulator, test_func=rmsd, epoch = epoch, steps = steps,
+                              output_period = steps, test_logger = test_logger, test_dict = test_dict)
+            ####################################################################################################################
             
-            if val_loss > args.max_val_loss and val_loss > max_val_loss:
-                #inc_diff = True
-                max_val_loss = val_loss
+            if val_loss < args.max_val_loss and val_loss < min_val_loss:
+                min_val_loss = val_loss
                 learner.save_model()
-                lr *= args.lr_decay
-                learner.set_lr(lr)
-            
-            #if (epoch % 100) == 0:
-            #    lr *= args.lr_decay
-            #    learner.set_lr(lr)
-
-            if inc_diff == True:
-                learner.save_model()
+                
+            if epoch == 700:
+                inc_diff = True
+                
+            if (epoch % 100) == 0 and steps < args.max_steps:
+                steps += args.steps
+                output_period += args.output_period
+                learner.set_steps(steps)
+                learner.set_output_period(output_period)  
+                min_val_loss = args.max_val_loss
                 
 def get_args(arguments=None):
     # fmt: off
@@ -176,10 +189,16 @@ def get_args(arguments=None):
     parser.add_argument('--load-model', default=None, help='Restart training using a model checkpoint')  # keep first
     parser.add_argument('--conf', '-c', type=open, action=LoadFromFile, help='Configuration yaml file')  # keep second
     parser.add_argument('--num-epochs', default=300, type=int, help='number of epochs')
+    parser.add_argument('--num-sim-workers', default=1, type=int, help='number of simulation workers')
+    parser.add_argument('--num-gpus', default=1, type=int, help='number of gpus')
+    parser.add_argument('--num-cpus', default=1, type=int, help='number of simulation workers')
+    parser.add_argument('--local-worker', default=True, type=bool, help='Add or not local worker')
+    parser.add_argument('--optimize', default=True, type=bool, help='Use a optimized version of the nnp')
+
     parser.add_argument('--batch-size', default=16, type=int, help='batch size')
     parser.add_argument('--sim-batch-size', default=64, type=int, help='simulation batch size')
     parser.add_argument('--max-grad-norm', default=0.7, type=float, help= 'Max grad norm for gradient clipping')
-    parser.add_argument('--max-val-loss', default=0.9, type=float, help= 'Max val loss to increase level')
+    parser.add_argument('--max-val-loss', default=1.5, type=float, help= 'Max val loss to increase level')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--lr-decay', default=1, type=float, help='learning rate decay')
     parser.add_argument('--min-lr', default=1e-4, type=float, help='minimum value of lr')
@@ -216,7 +235,7 @@ def get_args(arguments=None):
     parser.add_argument('--datasets', default='/shared/carles/torchmd-exp/datasets', type=str, 
                         help='Directory with the files with the names of train and val proteins')
     parser.add_argument('--train-set',  default=None, help='File with the names of the proteins in the train set ')
-    parser.add_argument('--test-set',  default=None, help='File with the names of the proteins in the val set ')
+    parser.add_argument('--test-set',  default=None, help='File with the names of the proteins in the test set ')
 
     # Torchmdexp specific
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
