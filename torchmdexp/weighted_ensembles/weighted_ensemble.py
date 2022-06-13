@@ -1,6 +1,7 @@
 import torch
 from statistics import mean
 import numpy as np
+import time
 
 BOLTZMAN = 0.001987191
 
@@ -89,7 +90,7 @@ class WeightedEnsemble:
                       )
         return create_weighted_ensemble_instance
     
-    def _extEpot(self, states, embeddings, mode="train"):
+    def _extEpot(self, states, embeddings, nnp_prime, mode="train"):
         
         # Prepare pos, embeddings and batch tensors
         pos = states.to(self.device).type(torch.float32).reshape(-1, 3)
@@ -101,18 +102,24 @@ class WeightedEnsemble:
                 
         # Compute external energies
         if mode == "train":
-            ext_energies, ext_forces = self.nnp(embeddings, pos, batch)
+            ext_energies_hat , forces = nnp_prime(embeddings, pos, batch)
+            ext_energies_hat.detach()
+            forces.detach()
+            ext_energies, forces = self.nnp(embeddings, pos, batch)
+            forces.detach()
+            
         elif mode == "val":
-            ext_energies, ext_forces = self.nnp(embeddings, pos, batch)
+            ext_energies, _ = self.nnp(embeddings, pos, batch)
         
-        ext_forces.detach()
-        return ext_energies.squeeze(1)
+        #ext_forces.detach()
+        return ext_energies.squeeze(1), ext_energies_hat.squeeze(1)
                        
-    def _weights(self, states, embeddings, U_prior):
+    def _weights(self, states, embeddings, U_prior, nnp_prime):
         
         # Compute external Epot and create a new eternal Epot detached 
-        U_ext = self._extEpot(states, embeddings, mode="train")
-        U_ext_hat = U_ext.detach()
+        U_ext, U_ext_hat = self._extEpot(states, embeddings, nnp_prime, mode="train")
+        
+        #U_ext_hat = nnp_prime.detach()
         
         U_prior = U_prior.to(U_ext.device)
 
@@ -130,31 +137,31 @@ class WeightedEnsemble:
         
         return neff
     
-    def compute(self, states, ground_truth, embeddings, U_prior, neff_threshold=None):
+    def compute(self, states, ground_truth, embeddings, U_prior, nnp_prime, neff_threshold=None):
         
-        weights, U_ext_hat = self._weights(states, embeddings, U_prior)
-        
+        weights, U_ext_hat = self._weights(states, embeddings, U_prior, nnp_prime)
+
         n = len(weights)
         
         # Compute the weighted ensemble of the conformations 
         states = states.to(self.device)
-                
+        
         obs = torch.tensor([self.metric(state, ground_truth) for state in states], device = self.device, dtype = self.precision)
         w_ensemble = torch.multiply(weights, obs).sum(0) 
         
         return w_ensemble
     
-    def compute_loss(self, ground_truth, states, embeddings, U_prior):
+    def compute_loss(self, ground_truth, states, embeddings, U_prior, nnp_prime):
         
-        w_e = self.compute(states, ground_truth, embeddings, U_prior)
+        w_e = self.compute(states, ground_truth, embeddings, U_prior, nnp_prime)
         loss = self.loss_fn(w_e)  
         return loss
         
     
-    def compute_gradients(self, ground_truth, states, embeddings, U_prior, grads_to_cpu=True):
+    def compute_gradients(self, ground_truth, states, embeddings, U_prior, nnp_prime, grads_to_cpu=True):
                 
         self.optimizer.zero_grad()
-        loss = self.compute_loss(ground_truth, states, embeddings, U_prior)
+        loss = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
         

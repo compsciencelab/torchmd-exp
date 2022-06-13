@@ -12,3 +12,5 @@ data/
 scripts/utils/test_sim.ipynb
 build/
 scripts/utils/
+datasets/
+dist/

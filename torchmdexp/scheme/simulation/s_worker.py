@@ -49,4 +49,7 @@ class SimWorker(Worker):
 
     def set_ground_truth(self, ground_truth):
         self.simulator.set_ground_truth(ground_truth)
+        
+    def get_nnp(self):
+        return self.nnp
             

@@ -8,6 +8,7 @@ import os
 import ray
 import random
 from collections import defaultdict
+import copy
 
 class UWorker(Worker):
     """
@@ -121,16 +122,16 @@ class Updater(Worker):
         info = {}
         
         # Simulation step
-        sim_dict, sys_names = self.sim_step(steps, output_period)
+        sim_dict, sys_names, nnp_prime = self.sim_step(steps, output_period)
         torch.cuda.empty_cache() 
-
+        
         # Reweighting step
         num_batches = len(sys_names) // self.batch_size
-        train_losses, val_losses, val_dict = self.reweight_step(sim_dict, sys_names)
-        
+        train_losses, val_losses, val_dict = self.reweight_step(sim_dict, sys_names, nnp_prime)
+
         # Set weights
         weights = self.local_we_worker.get_weights()
-        if self.sim_execution == "centrallised":
+        if self.sim_execution == "centralised":
             self.local_worker.set_weights(weights)
         elif self.sim_execution == "parallelised":
             for e in self.remote_workers: e.set_weights.remote(weights)
@@ -148,18 +149,20 @@ class Updater(Worker):
         sim_results = []
         if self.sim_execution == "centralised":
             sim_dict = self.local_worker.simulate(steps, output_period)
-        
+            nnp_prime = copy.deepcopy(self.local_worker.get_nnp())
+            
         elif self.sim_execution == "parallelised":
             pending = [e.simulate.remote(steps, output_period) for e in self.remote_workers]
             sim_results = ray_get_and_free(pending)
             [sim_dict.update(result) for result in sim_results]
-        
+            nnp_prime = copy.deepcopy(ray.get(self.remote_workers[0].get_nnp.remote()))
+            
         sys_names = list(sim_dict.keys())
         random.shuffle(sys_names) # rdmize systems
         
-        return sim_dict, sys_names
+        return sim_dict, sys_names, nnp_prime
 
-    def reweight_step(self, sim_dict, sys_names, train_losses = [], val_losses = [], val_dict = {}):
+    def reweight_step(self, sim_dict, sys_names, nnp_prime, train_losses = [], val_losses = [], val_dict = {}):
         
         train_losses = []
         val_losses = []
@@ -178,7 +181,7 @@ class Updater(Worker):
                     system_result = sim_dict[s]
 
                     # Compute Train loss
-                    grads, loss = self.local_we_worker.compute_gradients(**system_result)
+                    grads, loss = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
                     grads_to_average.append(grads)
                     train_losses.append(loss)
 

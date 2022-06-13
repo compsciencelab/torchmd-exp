@@ -48,6 +48,11 @@ def main():
     # Define NNP
     nnp = LNNP(args)        
     optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
+    
+    # Save num_params
+    input_file = open(os.path.join(args.log_dir, 'input.yaml'), 'a')
+    input_file.write(f'num_parameters: {sum(p.numel() for p in nnp.model.parameters())}')
+    input_file.close()
 
     # Load training molecules
     train_names = [l.rstrip() for l in open(os.path.join(args.datasets, args.train_set))]
@@ -71,7 +76,7 @@ def main():
     ####################################################################################################################
     
     # 2. Define the Weighted Ensemble that computes the ensemble of states   
-    loss = Losses(0.0, fn_name='margin_ranking', margin=-1.0, y=1.0)
+    loss = Losses(0.0, fn_name='margin_ranking', margin=0.0, y=1.0)
     weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, metric = rmsd, loss_fn=loss,
                                                                 val_fn=rmsd,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
@@ -148,12 +153,13 @@ def main():
             
             ground_truth = ground_truth[:]
             random.shuffle(ground_truth) # rdmize systems
-
+            #k = 0
             for i in range(0, len(ground_truth), sim_batch_size):
                 batch_ground_truth = ground_truth[i:i+sim_batch_size]
                 
                 learner.set_ground_truth(batch_ground_truth)
-                                
+                #k += 1
+                #print(f'batch {k}')
                 learner.step()
  
             learner.compute_epoch_stats()
@@ -173,9 +179,14 @@ def main():
                 min_val_loss = val_loss
                 learner.save_model()
                 
-            if epoch == 700:
-                inc_diff = True
-                
+            #if epoch == 700:
+                #inc_diff = True
+            
+            if val_loss < 2.8 and (epoch % 50) == 0:
+                lr *= args.lr_decay
+                lr = args.min_lr if lr < args.min_lr else lr
+                learner.set_lr(lr)
+
             if (epoch % 100) == 0 and steps < args.max_steps:
                 steps += args.steps
                 output_period += args.output_period
@@ -213,6 +224,8 @@ def get_args(arguments=None):
     parser.add_argument('--prior-model', type=str, default=None, choices=priors.__all__, help='Which prior model to use')
 
     # architectural args
+    parser.add_argument('--charge', type=bool, default=False, help='Model needs a total charge')
+    parser.add_argument('--spin', type=bool, default=False, help='Model needs a spin state')
     parser.add_argument('--embedding-dimension', type=int, default=256, help='Embedding dimension')
     parser.add_argument('--num-layers', type=int, default=6, help='Number of interaction layers in the model')
     parser.add_argument('--num-rbf', type=int, default=64, help='Number of radial basis functions in model')
@@ -232,8 +245,7 @@ def get_args(arguments=None):
     # dataset specific
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
     parser.add_argument('--test_dir', default=None, help='Directory with test data')
-    parser.add_argument('--datasets', default='/shared/carles/torchmd-exp/datasets', type=str, 
-                        help='Directory with the files with the names of train and val proteins')
+    parser.add_argument('--datasets', default='/shared/carles/torchmd-exp/datasets', type=str, help='Directory with the files with the names of train and val proteins')
     parser.add_argument('--train-set',  default=None, help='File with the names of the proteins in the train set ')
     parser.add_argument('--test-set',  default=None, help='File with the names of the proteins in the test set ')
 
@@ -265,9 +277,11 @@ def get_args(arguments=None):
     parser.add_argument('--reduce-op', type=str, default='add', choices=['add', 'mean'], help='Reduce operation to apply to atomic predictions')
     parser.add_argument('--exclusions', default=('bonds', 'angles', '1-4'), type=tuple, help='exclusions for the LJ or repulsionCG term')
     parser.add_argument('--save-traj', default=False, type=tuple, help='Save training states')
-
-    args = parser.parse_args(args=arguments)
     
+    args = parser.parse_args()
+    os.makedirs(args.log_dir,exist_ok=True)
+    save_argparse(args,os.path.join(args.log_dir,'input.yaml'),exclude='conf')
+
     return args
 
 if __name__ == "__main__":

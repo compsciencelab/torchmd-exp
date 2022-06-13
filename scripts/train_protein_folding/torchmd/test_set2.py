@@ -2,6 +2,7 @@ import os
 from torchmdexp.datasets.proteinfactory import ProteinFactory
 from torchmdexp.utils.logger import LogWriter
 from statistics import mean
+import torch
 
 def prepare_test(args, system_factory, sim_factory, nnp):
     # Load test molecules
@@ -30,7 +31,7 @@ def test_step(test_simulator, test_func, epoch, steps, output_period, test_logge
     def compute_test_loss(test_func, ground_truth, states, **kwargs):
         test_loss = test_func(ground_truth, states[-1]).item()
         return test_loss
-
+    
     test_sim_dict = test_simulator.simulate(steps,output_period)
 
     test_dict['epoch'] = epoch
@@ -42,5 +43,6 @@ def test_step(test_simulator, test_func, epoch, steps, output_period, test_logge
         test_losses.append(test_loss)
         test_dict[key] = test_loss
 
+    torch.cuda.empty_cache() 
     test_dict['test_loss'] = mean(test_losses)
     test_logger.write_row(test_dict)
