@@ -12,7 +12,6 @@ def get_embeddings(mol, device, replicas):
               'VAL':14, 'MET':15, 'CYS':16, 'NLE':17, 'ARG':18,'LYS':19, 'LEU':20,
               'ILE':21, 'MAG': 22,
              }
-    
     emb = np.array([AA2INT[x] for x in mol.resname if x != 'MAG'])
     emb = torch.tensor(emb, device = device).repeat(replicas, 1)
     return emb

@@ -1,30 +1,24 @@
 import argparse
 import torch
+from torchmdexp.datasets.proteinfactory import ProteinFactory
 from torchmdexp.samplers.torchmd.torchmd_sampler import TorchMD_Sampler
 from torchmdexp.samplers.utils import moleculekit_system_factory
 from torchmdexp.scheme.scheme import Scheme
 from torchmdexp.weighted_ensembles.weighted_ensemble import WeightedEnsemble
 from torchmdexp.learner import Learner
-from torchmdexp.metrics.native_contacts import q
 from torchmdexp.metrics.losses import Losses
 from torchmd.utils import LoadFromFile
-from torchmdnet import datasets, priors, models
-from torchmdnet.models import output_modules
-from torchmdnet.models.utils import rbf_class_mapping, act_class_mapping
-from torchmdnet.utils import LoadFromCheckpoint, save_argparse, number
-from torchmdnet.module import LNNP
-import ray
+from torchmdexp.metrics.rmsd import rmsd
 from moleculekit.molecule import Molecule
+from torchmdexp.nnp import models
+from torchmdexp.nnp.models import output_modules
+from torchmdexp.nnp.models.utils import rbf_class_mapping, act_class_mapping
+from torchmdexp.nnp.module import NNP
+from torchmdexp.utils.utils import save_argparse
+import ray
 import numpy as np
-from torchmdexp.datasets.proteinfactory import ProteinFactory
-from statistics import mean
 import os
 import random
-from test_set2 import prepare_test, test_step
-from torchmdnet.optimize import optimize as optimize_model
-from torchmdexp.samplers.utils import get_native_coords, get_embeddings
-from torchmdexp.metrics.rmsd import rmsd
-from torchmdexp.metrics.tmscore import tm_score
 
 def main():
     args = get_args()
@@ -46,7 +40,7 @@ def main():
     num_sim_workers = args.num_sim_workers
     
     # Define NNP
-    nnp = LNNP(args)        
+    nnp = NNP(args)        
     optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
     
     # Save num_params
@@ -60,6 +54,14 @@ def main():
     protein_factory.set_levels(args.levels_dir)
     train_ground_truth = protein_factory.get_ground_truth(0)
     
+    # Load test molecules
+    if args.test_set:
+        test_names = [l.rstrip() for l in open(os.path.join(args.datasets, args.test_set))]
+        test_protein_factory = ProteinFactory(args.datasets, args.test_set)
+        test_protein_factory.set_levels(args.test_dir)
+        test_ground_truth = test_protein_factory.get_ground_truth(0)
+
+    
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
                                                              replicas=args.replicas, cutoff=args.cutoff, rfa=args.rfa,
@@ -69,11 +71,6 @@ def main():
                                                              langevin_gamma=args.langevin_gamma
                                                             )
     
-    ####################################################################################################################
-    # ** Define test simulator
-    if args.test_dir:
-        test_simulator, test_dict, test_logger = prepare_test(args, moleculekit_system_factory, torchmd_sampler_factory, nnp)
-    ####################################################################################################################
     
     # 2. Define the Weighted Ensemble that computes the ensemble of states   
     loss = Losses(0.0, fn_name='margin_ranking', margin=0.0, y=1.0)
@@ -138,12 +135,6 @@ def main():
         ground_truth = protein_factory.get_ground_truth(level)
         init_states = protein_factory.get_level(level)
         learner.level_up()
-        
-        # Change lr
-        if level >= 1:
-            lr *= args.lr_decay
-            lr = args.min_lr if lr < args.min_lr else lr
-            learner.set_lr(lr)
             
         # Set sim batch size:
         while sim_batch_size > args.sim_batch_size:
@@ -153,35 +144,28 @@ def main():
             
             ground_truth = ground_truth[:]
             random.shuffle(ground_truth) # rdmize systems
-            #k = 0
+            
             for i in range(0, len(ground_truth), sim_batch_size):
                 batch_ground_truth = ground_truth[i:i+sim_batch_size]
-                
                 learner.set_ground_truth(batch_ground_truth)
-                #k += 1
-                #print(f'batch {k}')
                 learner.step()
  
-            learner.compute_epoch_stats()
-            learner.write_row()
-            val_loss = learner.get_val_loss()
             
-            ####################################################################################################################
             # Compute test loss
             epoch += 1
             if args.test_set:
                 if (epoch == 1 or (epoch % args.test_freq) == 0):
-                    test_step(test_simulator, test_func=rmsd, epoch = epoch, steps = steps,
-                              output_period = steps, test_logger = test_logger, test_dict = test_dict)
-            ####################################################################################################################
+                    learner.set_ground_truth(test_ground_truth)
+                    learner.step(test=True)
+                                                    
+            learner.compute_epoch_stats()
+            learner.write_row()
+            val_loss = learner.get_val_loss()
             
             if val_loss < args.max_val_loss and val_loss < min_val_loss:
                 min_val_loss = val_loss
                 learner.save_model()
-                
-            #if epoch == 700:
-                #inc_diff = True
-            
+                            
             if val_loss < 2.8 and (epoch % 50) == 0:
                 lr *= args.lr_decay
                 lr = args.min_lr if lr < args.min_lr else lr
@@ -221,7 +205,6 @@ def get_args(arguments=None):
     # model architecture
     parser.add_argument('--model', type=str, default='graph-network', choices=models.__all__, help='Which model to train')
     parser.add_argument('--output-model', type=str, default='Scalar', choices=output_modules.__all__, help='The type of output model')
-    parser.add_argument('--prior-model', type=str, default=None, choices=priors.__all__, help='Which prior model to use')
 
     # architectural args
     parser.add_argument('--charge', type=bool, default=False, help='Model needs a total charge')

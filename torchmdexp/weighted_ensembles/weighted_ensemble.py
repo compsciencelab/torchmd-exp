@@ -101,15 +101,16 @@ class WeightedEnsemble:
         embeddings = embeddings.reshape(-1).to(self.device)
                 
         # Compute external energies
-        if mode == "train":
-            ext_energies_hat , forces = nnp_prime(embeddings, pos, batch)
-            ext_energies_hat.detach()
-            forces.detach()
-            ext_energies, forces = self.nnp(embeddings, pos, batch)
-            forces.detach()
-            
-        elif mode == "val":
+        if nnp_prime == None:
             ext_energies, _ = self.nnp(embeddings, pos, batch)
+            ext_energies_hat = ext_energies.detach()
+            del _
+        else:
+            ext_energies_hat , _ = nnp_prime(embeddings, pos, batch)
+            ext_energies_hat.detach()
+            del _
+            ext_energies, forces = self.nnp(embeddings, pos, batch)
+            del _
         
         #ext_forces.detach()
         return ext_energies.squeeze(1), ext_energies_hat.squeeze(1)
@@ -158,22 +159,26 @@ class WeightedEnsemble:
         return loss
         
     
-    def compute_gradients(self, ground_truth, states, embeddings, U_prior, nnp_prime, grads_to_cpu=True):
-                
-        self.optimizer.zero_grad()
-        loss = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
+    def compute_gradients(self, ground_truth, states, embeddings, U_prior, nnp_prime, grads_to_cpu=True, test=False):
         
-        
-        grads = []
-        for p in self.nnp.parameters():
-            if grads_to_cpu:
-                if p.grad is not None: grads.append(p.grad.data.cpu().numpy())
-                else: grads.append(None)
-            else:
-                if p.grad is not None:
-                    grads.append(p.grad)
+        if test == False:
+            self.optimizer.zero_grad()
+            loss = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
+
+
+            grads = []
+            for p in self.nnp.parameters():
+                if grads_to_cpu:
+                    if p.grad is not None: grads.append(p.grad.data.cpu().numpy())
+                    else: grads.append(None)
+                else:
+                    if p.grad is not None:
+                        grads.append(p.grad)
+        elif test == True:
+            with torch.no_grad():
+                loss = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime)
                     
         return grads, loss.item()
         

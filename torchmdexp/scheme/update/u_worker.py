@@ -48,12 +48,11 @@ class UWorker(Worker):
                                self.reweighting_execution, 
                                batch_size=self.batch_size)
 
-    def step(self, steps, output_period, log_dir=None):
+    def step(self, steps, output_period, test=False, log_dir=None):
         """
         Makes a simulation and computes the weighted ensemble.
         """
-            
-        info = self.updater.step(steps, output_period)
+        info = self.updater.step(steps, output_period, test)
         return info
     
     def set_init_state(self, init_state):
@@ -117,7 +116,7 @@ class Updater(Worker):
         # Other args
         self.batch_size = batch_size
     
-    def step(self, steps, output_period):
+    def step(self, steps, output_period, test=False):
         
         info = {}
         
@@ -126,8 +125,7 @@ class Updater(Worker):
         torch.cuda.empty_cache() 
         
         # Reweighting step
-        num_batches = len(sys_names) // self.batch_size
-        train_losses, val_losses, val_dict = self.reweight_step(sim_dict, sys_names, nnp_prime)
+        train_losses, val_losses, test_losses, val_dict = self.reweight_step(sim_dict, sys_names, nnp_prime, test=test)
 
         # Set weights
         weights = self.local_we_worker.get_weights()
@@ -137,10 +135,14 @@ class Updater(Worker):
             for e in self.remote_workers: e.set_weights.remote(weights)
         
         # Update info dict
-        info['train_loss'] = mean(train_losses)
-        info['val_loss'] = mean(val_losses)
-        info.update(val_dict)
-                
+        if len(train_losses) > 0:
+            info['train_loss'] = mean(train_losses)
+            info['val_loss'] = mean(val_losses)
+            info['test_loss'] = None
+            info.update(val_dict)
+        elif len(test_losses) > 0:
+            info['test_loss'] = mean(test_losses)
+        
         return info
 
     def sim_step(self, steps, output_period):
@@ -162,15 +164,17 @@ class Updater(Worker):
         
         return sim_dict, sys_names, nnp_prime
 
-    def reweight_step(self, sim_dict, sys_names, nnp_prime, train_losses = [], val_losses = [], val_dict = {}):
+    def reweight_step(self, sim_dict, sys_names, nnp_prime, train_losses = [], val_losses = [], val_dict = {}, test=False):
         
         train_losses = []
         val_losses = []
+        test_losses = []
         val_dict = {}
         
         if self.reweighting_execution == "centralised":
-            num_batches = len(sys_names) // self.batch_size
-
+            num_batches = len(sys_names) // self.batch_size if self.batch_size < len(sys_names) else 1
+            nnp_prime = None if num_batches == 1 else nnp_prime
+            
             # Update for all the simulated systems
             for batch in range(num_batches):
                 batch_names, sys_names = sys_names[:self.batch_size], sys_names[self.batch_size:]
@@ -179,22 +183,27 @@ class Updater(Worker):
                 # Mini-batch update
                 for s in batch_names:
                     system_result = sim_dict[s]
-
                     # Compute Train loss
-                    grads, loss = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
-                    grads_to_average.append(grads)
-                    train_losses.append(loss)
+                    if test == False: 
+                        grads, loss = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
+                        grads_to_average.append(grads)
+                        train_losses.append(loss)
 
-                    # Compute Val Loss
-                    val_loss = self.local_we_worker.compute_val_loss(**system_result)
-                    val_dict[s] = val_loss
-                    val_losses.append(val_loss)    
-                    torch.cuda.empty_cache()
+                        # Compute Val Loss
+                        val_loss = self.local_we_worker.compute_val_loss(**system_result)
+                        val_dict[s] = val_loss
+                        val_losses.append(val_loss)    
+                        torch.cuda.empty_cache()
+                    
+                    if test == True:
+                        _ , loss = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
+                        test_losses.append(loss)
 
                 # Optim step
-                grads_to_average = average_gradients(grads_to_average)
-                self.local_we_worker.apply_gradients(grads_to_average)
-
-        return train_losses, val_losses, val_dict
+                if len(grads_to_average) > 0:
+                    grads_to_average = average_gradients(grads_to_average)
+                    self.local_we_worker.apply_gradients(grads_to_average)
+        
+        return train_losses, val_losses, test_losses, val_dict
         
         

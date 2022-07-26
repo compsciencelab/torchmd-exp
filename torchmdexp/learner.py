@@ -28,12 +28,13 @@ class Learner:
         
         self.train_losses = []
         self.val_losses = []
+        self.test_losses = []
         self.level = 0
         self.epoch = 0
         self.lr = None
         
         # Prepare results dict
-        self.results_dict = {'level':self.level, 'steps': self.steps, 'train_loss': None, 'val_loss': None}
+        self.results_dict = {'level':self.level, 'steps': self.steps, 'train_loss': None, 'val_loss': None, 'test_loss': None}
         total_dict = {}
         for name in self.train_names:
             total_dict[name] = None
@@ -41,19 +42,21 @@ class Learner:
         keys = tuple([key for key in self.results_dict.keys()])
         self.logger = LogWriter(self.log_dir,keys=keys)
 
-    def step(self):
+    def step(self, test=False):
         """ Takes an optimization update step """
         
         # Update step
-
-        info = self.update_worker.step(self.steps, self.output_period)
+        info = self.update_worker.step(self.steps, self.output_period, test)
 
         self.results_dict.update(info)
         self.results_dict['level'] = self.level
         self.results_dict['steps'] = self.steps
         
-        self.val_losses.append(info['val_loss'])
-        self.train_losses.append(info['train_loss'])
+        if test == False:
+            self.val_losses.append(info['val_loss'])
+            self.train_losses.append(info['train_loss'])
+        else:
+            self.test_losses.append(info['test_loss'])
                 
     def level_up(self):
         """ Increases level of difficulty """
