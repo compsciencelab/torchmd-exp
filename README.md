@@ -19,14 +19,9 @@ cd torchmd-exp
 conda env create -f environment.yml
 conda activate torchmdexp
 pip install -e .
+pip install --no-deps torchmd
 ```
-- Install torchmd-net
-```
-cd ..
-git clone https://github.com/raimis/torchmd-net.git
-cd torchmd-net
-pip install -e .
-```
+
 
 ## How does the model works?
 
