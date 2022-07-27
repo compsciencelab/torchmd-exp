@@ -16,7 +16,7 @@ class Learner:
         Directory for model checkpoints and the monitor.csv
     """
     
-    def __init__(self, scheme, steps, output_period, train_names = 0 , log_dir=None, save_traj=False, keys=('Train loss', 'Val loss')):
+    def __init__(self, scheme, steps, output_period, train_names = 0 , log_dir=None, save_traj=False, keys=('train_loss', 'val_loss')):
         self.log_dir = log_dir
         self.update_worker = scheme.update_worker()
         
@@ -30,7 +30,7 @@ class Learner:
         self.val_losses = []
         self.test_losses = []
         self.level = 0
-        self.epoch = 0
+        self.epoch = 1
         self.lr = None
         
         # Prepare results dict
@@ -38,6 +38,9 @@ class Learner:
         total_dict = {}
         for name in self.train_names:
             total_dict[name] = None
+        for key in keys:
+            if key not in total_dict.keys():
+                total_dict[key] = 0
         self.results_dict.update(total_dict)
         keys = tuple([key for key in self.results_dict.keys()])
         self.logger = LogWriter(self.log_dir,keys=keys)
@@ -95,6 +98,7 @@ class Learner:
         self.train_loss = mean(self.train_losses)
         self.results_dict['val_loss'] = self.val_loss
         self.results_dict['train_loss'] = self.train_loss
+        self.results_dict['epoch'] = self.epoch
         
         self.val_losses = []
         self.train_losses = []
