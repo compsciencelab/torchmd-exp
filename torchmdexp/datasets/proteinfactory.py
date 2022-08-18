@@ -22,7 +22,7 @@ class ProteinFactory:
         return self.levels[level]['ground_truth']
     
     def set_levels(self, levels_dir):
-        levels = [filename for filename in os.listdir(levels_dir)]
+        levels = [filename for filename in os.listdir(levels_dir) if not filename.startswith('.')]
         levels = [x for _, x in sorted(zip([int(re.findall(r'\d+', level)[0]) for level in levels], levels))]
         self.num_levels = len(levels)
         
