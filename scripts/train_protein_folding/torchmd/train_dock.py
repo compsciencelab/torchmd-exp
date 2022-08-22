@@ -120,27 +120,27 @@ def main():
 
     
     # 5. Define epoch and Levels
-    epoch = 0    
+    epoch = 0
     num_levels = protein_factory.get_num_levels()
     
     init_state = None
-    min_val_loss = args.max_val_loss
     
     # 6. Train
     for level in range(num_levels):
-                
-        inc_diff = False
+        
+        assert args.max_val_loss > args.thresh_lvlup
+        min_val_loss = args.max_val_loss
+        lvl_up = False
         
         # Update level
-        ground_truth = protein_factory.get_ground_truth(level)
-        init_states = protein_factory.get_level(level)
-        learner.level_up()
+        ground_truth = protein_factory.get_ground_truth(level=0)  # Ground state is always docked state
+        # init_states = protein_factory.get_level(level) # Not used
             
         # Set sim batch size:
         while sim_batch_size > args.sim_batch_size:
             sim_batch_size //= 2
             
-        while inc_diff == False:
+        while not lvl_up:
             
             ground_truth = ground_truth[:]
             random.shuffle(ground_truth) # rdmize systems
@@ -171,12 +171,24 @@ def main():
                 lr = args.min_lr if lr < args.min_lr else lr
                 learner.set_lr(lr)
 
-            if (epoch % 100) == 0 and steps < args.max_steps:
+            # if (epoch % 100) == 0 and steps < args.max_steps:
+            #     steps += args.steps
+            #     output_period += args.output_period
+            #     learner.set_steps(steps)
+            #     learner.set_output_period(output_period)  
+            #     min_val_loss = args.max_val_loss
+            
+            # Check before level up. If last level -> Don't level up
+            if min_val_loss < args.thresh_lvlup and level + 1 < args.num_levels:
+                print(f'Leveling up to level {level+1} with validation loss: {min_val_loss} < {args.thresh_lvlup}')
+                lvl_up = True
+                learner.level_up()
+                
                 steps += args.steps
                 output_period += args.output_period
                 learner.set_steps(steps)
-                learner.set_output_period(output_period)  
-                min_val_loss = args.max_val_loss
+                learner.set_output_period(output_period)
+                
                 
 def get_args(arguments=None):
     # fmt: off
@@ -226,13 +238,14 @@ def get_args(arguments=None):
 
 
     # dataset specific
-    parser.add_argument('--num_levels', default=None, help='How many levels to use including the 0th level')
+    parser.add_argument('--num-levels', default=None, help='How many levels to use including the 0th level')
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
     parser.add_argument('--test_dir', default=None, help='Directory with test data')
     parser.add_argument('--datasets', default='/shared/carles/torchmd-exp/datasets', type=str, help='Directory with the files with the names of train and val proteins')
     parser.add_argument('--train-set',  default=None, help='File with the names of the proteins in the train set ')
     parser.add_argument('--test-set',  default=None, help='File with the names of the proteins in the test set ')
-
+    parser.add_argument('--thresh-lvlup', default=5.0, type=float, help='Validation loss value to get before leveling up')
+    
     # Torchmdexp specific
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
     parser.add_argument('--forcefield', default="/shared/carles/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
