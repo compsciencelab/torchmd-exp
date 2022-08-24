@@ -17,7 +17,7 @@ git clone https://github.com/compsciencelab/torchmd-exp.git
 ```
 cd torchmd-exp
 conda env create -f environment.yml
-conda activate torchmdexp
+conda activate torchmd-exp
 pip install -e .
 pip install --no-deps torchmd
 ```

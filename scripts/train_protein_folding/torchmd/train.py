@@ -116,7 +116,7 @@ def main():
 
     # 4. Define Learner
     learner = Learner(scheme, steps, output_period, train_names=train_names, log_dir=args.log_dir, save_traj=args.save_traj,
-                      keys = ('level', 'steps', 'Train loss', 'Val loss'))    
+                      keys = ('level', 'steps', 'train_loss', 'val_loss', 'epoch'))    
 
     
     # 5. Define epoch and Levels
