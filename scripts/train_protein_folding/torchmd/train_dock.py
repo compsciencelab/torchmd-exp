@@ -131,6 +131,8 @@ def main():
         assert args.max_val_loss > args.thresh_lvlup
         min_val_loss = args.max_val_loss
         lvl_up = False
+        lr_warn = True
+        epoch_level = 0
         
         # Update level
         ground_truth = protein_factory.get_ground_truth(level=0)  # Ground state is always docked state
@@ -149,26 +151,31 @@ def main():
                 batch_ground_truth = ground_truth[i:i+sim_batch_size]
                 learner.set_ground_truth(batch_ground_truth)
                 learner.step()
- 
-            
+
             # Compute test loss
             epoch += 1
+            epoch_level += 1
             if args.test_set:
                 if (epoch == 1 or (epoch % args.test_freq) == 0):
                     learner.set_ground_truth(test_ground_truth)
                     learner.step(test=True)
-                                                    
+
+            # Get training process information
             learner.compute_epoch_stats()
             learner.write_row()
             val_loss = learner.get_val_loss()
-            
+
+            # Save
             if val_loss < args.max_val_loss and val_loss < min_val_loss:
                 min_val_loss = val_loss
                 learner.save_model()
-                            
-            if val_loss < 2.8 and (epoch % 50) == 0:
+
+            if val_loss < 2 * args.thresh_lvlup and (epoch % 5) == 0:
                 lr *= args.lr_decay
                 lr = args.min_lr if lr < args.min_lr else lr
+                if lr == args.min_lr and lr_warn: 
+                    print('Learning rate at minimum value.')
+                    lr_warn = False
                 learner.set_lr(lr)
 
             # if (epoch % 100) == 0 and steps < args.max_steps:
@@ -178,8 +185,8 @@ def main():
             #     learner.set_output_period(output_period)  
             #     min_val_loss = args.max_val_loss
             
-            # Check before level up. If last level -> Don't level up
-            if min_val_loss < args.thresh_lvlup and level + 1 < args.num_levels:
+            # Check before level up. If last level -> Don't level up. Spend at least 10 epochs per level
+            if min_val_loss < args.thresh_lvlup and level + 1 < args.num_levels and epoch_level >= 10:
                 print(f'Leveling up to level {level+1} with validation loss: {min_val_loss} < {args.thresh_lvlup}')
                 lvl_up = True
                 learner.level_up()
@@ -188,6 +195,8 @@ def main():
                 output_period += args.output_period
                 learner.set_steps(steps)
                 learner.set_output_period(output_period)
+                lr = args.lr
+                learner.set_lr(lr)
                 
                 
 def get_args(arguments=None):
