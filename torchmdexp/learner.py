@@ -28,13 +28,13 @@ class Learner:
         
         self.train_losses = []
         self.val_losses = []
-        self.test_losses = []
+        self.val_loss = None
         self.level = 0
         self.epoch = 0
         self.lr = None
         
         # Prepare results dict
-        self.results_dict = {'level':self.level, 'steps': self.steps, 'train_loss': None, 'val_loss': None, 'test_loss': None}
+        self.results_dict = {'level':self.level, 'steps': self.steps, 'train_loss': None, 'val_loss': None}
         total_dict = {}
         for name in self.train_names:
             total_dict[name] = None
@@ -42,21 +42,21 @@ class Learner:
         keys = tuple([key for key in self.results_dict.keys()])
         self.logger = LogWriter(self.log_dir,keys=keys)
 
-    def step(self, test=False):
+    def step(self, val=False):
         """ Takes an optimization update step """
         
         # Update step
-        info = self.update_worker.step(self.steps, self.output_period, test)
-
+        info = self.update_worker.step(self.steps, self.output_period, val)
+        print(val)
         self.results_dict.update(info)
         self.results_dict['level'] = self.level
         self.results_dict['steps'] = self.steps
         
-        if test == False:
-            self.val_losses.append(info['val_loss'])
+        if val == False:
             self.train_losses.append(info['train_loss'])
         else:
-            self.test_losses.append(info['test_loss'])
+            print('in val losses inside learner')
+            self.val_losses.append(info['val_loss'])
                 
     def level_up(self):
         """ Increases level of difficulty """
@@ -91,13 +91,15 @@ class Learner:
     def compute_epoch_stats(self):
         """ Compute epoch val loss and train loss averages and update epoch number"""
         
-        self.val_loss = mean(self.val_losses)
         self.train_loss = mean(self.train_losses)
-        self.results_dict['val_loss'] = self.val_loss
         self.results_dict['train_loss'] = self.train_loss
-        
-        self.val_losses = []
         self.train_losses = []
+
+        if len(self.val_losses) > 0:
+            self.val_loss = mean(self.val_losses)
+            self.results_dict['val_loss'] = self.val_loss
+            self.val_losses = []
+        
         self.epoch += 1
         
     def write_row(self):

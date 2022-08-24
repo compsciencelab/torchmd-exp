@@ -159,9 +159,9 @@ class WeightedEnsemble:
         return loss
         
     
-    def compute_gradients(self, ground_truth, states, embeddings, U_prior, nnp_prime, grads_to_cpu=True, test=False):
+    def compute_gradients(self, ground_truth, states, embeddings, U_prior, nnp_prime, grads_to_cpu=True, val=False):
         
-        if test == False:
+        if val == False:
             self.optimizer.zero_grad()
             loss = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime)
             loss.backward()
@@ -176,7 +176,7 @@ class WeightedEnsemble:
                 else:
                     if p.grad is not None:
                         grads.append(p.grad)
-        elif test == True:
+        elif val == True:
             with torch.no_grad():
                 loss = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime)
                     
