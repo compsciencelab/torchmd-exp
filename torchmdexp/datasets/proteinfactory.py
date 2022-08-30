@@ -38,7 +38,9 @@ class ProteinFactory:
                               'init_states': self.set_proteins_dataset(os.path.join(levels_dir, 'init_states'))
                              }
         
-    def get_level(self, level):
+    def get_level(self, level, from_gt=False):
+        if from_gt:
+            return self.levels[level]['ground_truth']
         
         return self.levels[level]['init_states']
     

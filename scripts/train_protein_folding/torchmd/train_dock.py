@@ -136,7 +136,9 @@ def main():
         
         # Update level
         ground_truth = protein_factory.get_ground_truth(level=0)  # Ground state is always docked state
-        # init_states = protein_factory.get_level(level) # Not used
+        init_states = protein_factory.get_level(level, from_gt=True)  # Get levels from ground truths
+            
+        
             
         # Set sim batch size:
         while sim_batch_size > args.sim_batch_size:
@@ -145,11 +147,14 @@ def main():
         while not lvl_up:
             
             ground_truth = ground_truth[:]
-            random.shuffle(ground_truth) # rdmize systems
+            init_states = init_states[:]
+            # random.shuffle(ground_truth) # rdmize systems TODO: Implement it along with init_states
             
             for i in range(0, len(ground_truth), sim_batch_size):
                 batch_ground_truth = ground_truth[i:i+sim_batch_size]
+                batch_init_states = init_states[i:i+sim_batch_size]
                 learner.set_ground_truth(batch_ground_truth)
+                learner.set_init_state(batch_init_states)
                 learner.step()
 
             # Compute test loss
