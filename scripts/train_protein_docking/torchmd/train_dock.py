@@ -138,8 +138,6 @@ def main():
         ground_truth = protein_factory.get_ground_truth(level=0)  # Ground state is always docked state
         init_states = protein_factory.get_level(level, from_gt=True)  # Get levels from ground truths
             
-        
-            
         # Set sim batch size:
         while sim_batch_size > args.sim_batch_size:
             sim_batch_size //= 2
