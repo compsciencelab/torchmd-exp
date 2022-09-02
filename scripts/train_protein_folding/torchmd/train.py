@@ -50,10 +50,15 @@ def main():
     input_file.close()
 
     # Load training molecules
-    train_set = ProteinDataset('/shared/carles/notebooks/dataset.npy')
-    train_names = train_set.get('names')
+    protein_factory = ProteinFactory()
+    protein_factory.load_dataset('/shared/carles/notebooks/dataset.npy')
+    
+    train_set, val_set = protein_factory.train_val_split(val_size=0.1)
+    
+    dataset_names = protein_factory.get_names()
     train_set_size = len(train_set)
-        
+    val_set_size = len(val_set)
+    
     # Load validation molecules
     if args.val_set:
         val_names = [l.rstrip() for l in open(os.path.join(args.datasets, args.val_set))]
@@ -115,7 +120,7 @@ def main():
 
 
     # 4. Define Learner
-    learner = Learner(scheme, steps, output_period, train_names=train_names, log_dir=args.log_dir, save_traj=args.save_traj,
+    learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir, save_traj=args.save_traj,
                       keys = ('level', 'steps', 'train_loss', 'val_loss', 'epoch'))    
 
     
@@ -123,33 +128,29 @@ def main():
     epoch = 0        
     min_val_loss = args.max_val_loss
     stop = False
-
     while stop == False:
 
-        #ground_truth = ground_truth[:]
         train_set.shuffle()
-
+        
+        # Train step
         for i in range(0, train_set_size, sim_batch_size):
             batch = train_set[ i : sim_batch_size + i]
             learner.set_batch(batch)
             learner.step()
 
-
-        # Compute val loss
-        epoch += 1
-        print('before val_set')
-        if args.val_set:
-            print('in val_set')
-            print(args.val_freq)
+        # Val step
+        if len(val_set) > 0:
             if (epoch == 1 or (epoch % args.val_freq) == 0):
-                print('val_freq')
-                learner.set_ground_truth(val_ground_truth)
-                learner.step(val=True)
+                for i in range(0, val_set_size, sim_batch_size):
+                    batch = val_set[ i : sim_batch_size + i]
+                    learner.set_batch(batch)
+                    learner.step(val=True)
 
         learner.compute_epoch_stats()
         learner.write_row()
         val_loss = learner.get_val_loss()
-
+        
+        epoch += 1
 
         if val_loss is not None:
             if val_loss < args.max_val_loss and val_loss < min_val_loss:

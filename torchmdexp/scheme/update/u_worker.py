@@ -171,12 +171,21 @@ class Updater(Worker):
         metric_dict = {}
         
         if self.reweighting_execution == "centralised":
-            num_batches = len(sys_names) // self.batch_size if self.batch_size < len(sys_names) else 1
-            nnp_prime = None if num_batches == 1 else nnp_prime
+            #num_batches = len(sys_names) // self.batch_size if self.batch_size < len(sys_names) else 1
+            num_systems = len(sys_names)
+            nnp_prime = None if num_systems == self.batch_size else nnp_prime
+            tmp_names = sys_names
             
             # Update for all the simulated systems
-            for batch in range(num_batches):
-                batch_names, sys_names = sys_names[:self.batch_size], sys_names[self.batch_size:]
+            for i in range(0, num_systems, self.batch_size):
+                
+                if self.batch_size > len(tmp_names) and self.batch_size < num_systems:
+                    n_to_add = self.batch_size - len(tmp_names)
+                    n_to_sample = len(sys_names) - n_to_add                    
+                    tmp_names += random.sample(sys_names[:n_to_sample], n_to_add)
+                    
+                batch_names, tmp_names = tmp_names[:self.batch_size], tmp_names[self.batch_size:]
+                
                 grads_to_average = []
 
                 # Mini-batch update

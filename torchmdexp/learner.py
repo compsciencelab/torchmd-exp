@@ -50,7 +50,6 @@ class Learner:
         
         # Update step
         info = self.update_worker.step(self.steps, self.output_period, val)
-        print(val)
         self.results_dict.update(info)
         self.results_dict['level'] = self.level
         self.results_dict['steps'] = self.steps
@@ -58,7 +57,6 @@ class Learner:
         if val == False:
             self.train_losses.append(info['train_loss'])
         else:
-            print('in val losses inside learner')
             self.val_losses.append(info['val_loss'])
                 
     def level_up(self):

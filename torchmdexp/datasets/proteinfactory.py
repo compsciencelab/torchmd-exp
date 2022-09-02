@@ -11,51 +11,41 @@ class ProteinFactory:
     
     def __init__(self):
         
-        self.train_set = None
-        self.val_set = None
+        self.dataset = None
+        self.set_size = None
+        
         self.train_set_size = None
         self.val_set_size = None
-        
-        self.sim_batch_size = 1
-    
-    def __len__(self, data = 'train'):
-        if data == 'train':
-            return len(self.train_set)
-        elif data == 'val':
-            return len(self.val_set)
-    
-    def load_dataset(self, filename, data = 'train'):
-        if data == 'train':
-            self.train_set = ProteinDataset(filename)
-            self.train_set_size = len(self.train_set)
-        elif data == 'val':
-            self.val_set = ProteinDataset(filename)
-            self.val_set_size = len(self.val_set)
-        
-    def set_sim_batch_size(self, sim_batch_size):
-        self.sim_batch_size = sim_batch_size
-    
-    def get_batch(self, index, data = 'train'):
-        
-        if data == 'train':
-            batch_dict = self.train_set[self.sim_batch_size * index : self.sim_batch_size * (index + 1)]
-        elif data == 'val':
-            batch_dict = self.val_set[self.sim_batch_size * index : self.sim_batch_size * (index + 1)]
             
-        return ProteinDataset(data_dict = batch_dict)
+    def __len__(self):
+        len(self.dataset)
     
-    def get_train_names(self):
-        return self.train_set.get_names()
+    def load_dataset(self, filename):
+        self.dataset = ProteinDataset(filename)
+            
+    def train_val_split(self, val_size=0.0):
+        
+        if not 0.0 <= val_size <= 1:
+            raise ValueError("Validation set proportion must be between 0 and 1")
+        
+        self.train_set_size = int(len(self.dataset) * (1-val_size))
+        self.val_set_size = len(self.dataset) - self.train_set_size
+        
+        self.dataset.shuffle()
+        
+        self.train_set, self.val_set = self.dataset[:self.train_set_size], self.dataset[self.train_set_size:]
+        
+        return self.train_set, self.val_set
+    
+    def get_names(self):
+        return self.dataset.get_names()
     
     def shuffle(self):
         
-        if self.train_set is None:
+        if self.dataset is None:
             raise ValueError("You should load a dataset before shuffleing it")
         else:
-            self.train_set.shuffle()
-        
-        if self.val_set is not None:
-            self.val_set.shuffle()
+            self.dataset.shuffle()
     
     
     def create_dataset(self, data_dir, pdb_ids, levels_dir, out_dir = '', topology = ('bonds', 'angles', 'dihedrals')):
@@ -93,6 +83,15 @@ class ProteinFactory:
             
         np.save(out_dir ,dataset)
     
+    
+    
+    
+    
+    
+    
+    
+    
+a = """    
     def set_levels(self, levels_dir):
         levels = [filename for filename in os.listdir(levels_dir) if not filename.startswith('.')]
         levels = [x for _, x in sorted(zip([int(re.findall(r'\d+', level)[0]) for level in levels], levels))]
@@ -111,5 +110,6 @@ class ProteinFactory:
     
     def get_num_levels(self):
         return self.num_levels
+    """
         
         

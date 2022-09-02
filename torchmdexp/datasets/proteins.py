@@ -7,6 +7,7 @@ import numpy as np
 from .utils import CA_MAP, CACB_MAP
 import copy
 import random
+from operator import itemgetter 
 
 class ProteinDataset(Dataset):
     """ 
@@ -41,7 +42,23 @@ class ProteinDataset(Dataset):
         return self.size
     
     def __getitem__(self, index):
-        return self._create_dataset({key: self.dataset[key][index] for key in self.dataset.keys()})
+        
+        new_dataset = {key: self.dataset[key][index] for key in self.dataset.keys()}
+        
+        index_list = list(range(index.stop)[index]) if index.stop is not None else [0]
+        
+        first_idx = index_list[0]
+        n_to_add = (index_list[-1] + 1) - self.size
+        batch_size = len(index_list)
+        
+        if n_to_add > 0 and batch_size < self.size and first_idx < self.size:
+            n_to_sample = self.size - (batch_size - n_to_add)
+            
+            rdm_idx = random.choices(range(n_to_sample), k=n_to_add)
+            for key in self.dataset.keys():
+                new_dataset[key] += list(itemgetter(*rdm_idx)(self.dataset[key][:n_to_sample]))
+            
+        return self._create_dataset(new_dataset)
 
     @classmethod
     def _create_dataset(cls, data_dict):
