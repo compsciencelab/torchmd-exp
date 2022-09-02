@@ -1,6 +1,7 @@
 import argparse
 import torch
 from torchmdexp.datasets.proteinfactory import ProteinFactory
+from torchmdexp.datasets.proteins import ProteinDataset
 from torchmdexp.samplers.torchmd.torchmd_sampler import TorchMD_Sampler
 from torchmdexp.samplers.utils import moleculekit_system_factory
 from torchmdexp.scheme.scheme import Scheme
@@ -49,11 +50,10 @@ def main():
     input_file.close()
 
     # Load training molecules
-    train_names = [l.rstrip() for l in open(os.path.join(args.datasets, args.train_set))]
-    protein_factory = ProteinFactory(args.datasets, args.train_set)
-    protein_factory.set_levels(args.levels_dir)
-    train_ground_truth = protein_factory.get_ground_truth(0)
-    
+    train_set = ProteinDataset('/shared/carles/notebooks/dataset.npy')
+    train_names = train_set.get('names')
+    train_set_size = len(train_set)
+        
     # Load validation molecules
     if args.val_set:
         val_names = [l.rstrip() for l in open(os.path.join(args.datasets, args.val_set))]
@@ -86,7 +86,7 @@ def main():
     # Core
     params.update({'sim_factory': torchmd_sampler_factory,
                    'systems_factory': moleculekit_system_factory,
-                   'systems': train_ground_truth,
+                   'systems': train_set,
                    'nnp': nnp,
                    'device': args.device,
                    'weighted_ensemble_factory': weighted_ensemble_factory,
@@ -120,69 +120,53 @@ def main():
 
     
     # 5. Define epoch and Levels
-    epoch = 0    
-    num_levels = protein_factory.get_num_levels()
-    
-    init_state = None
+    epoch = 0        
     min_val_loss = args.max_val_loss
-    
-    # 6. Train
-    for level in range(num_levels):
-                
-        inc_diff = False
-        
-        # Update level
-        ground_truth = protein_factory.get_ground_truth(level)
-        init_states = protein_factory.get_level(level)
-        learner.level_up()
-            
-        # Set sim batch size:
-        while sim_batch_size > args.sim_batch_size:
-            sim_batch_size //= 2
-            
-        while inc_diff == False:
-            
-            ground_truth = ground_truth[:]
-            random.shuffle(ground_truth) # rdmize systems
-            
-            for i in range(0, len(ground_truth), sim_batch_size):
-                batch_ground_truth = ground_truth[i:i+sim_batch_size]
-                learner.set_ground_truth(batch_ground_truth)
-                learner.step()
- 
-            
-            # Compute val loss
-            epoch += 1
-            print('before val_set')
-            if args.val_set:
-                print('in val_set')
-                print(args.val_freq)
-                if (epoch == 1 or (epoch % args.val_freq) == 0):
-                    print('val_freq')
-                    learner.set_ground_truth(val_ground_truth)
-                    learner.step(val=True)
-                                                    
-            learner.compute_epoch_stats()
-            learner.write_row()
-            val_loss = learner.get_val_loss()
-            
-            
-            if val_loss is not None:
-                if val_loss < args.max_val_loss and val_loss < min_val_loss:
-                    min_val_loss = val_loss
-                    learner.save_model()
-                            
-                if val_loss < 2.8 and (epoch % 50) == 0:
-                    lr *= args.lr_decay
-                    lr = args.min_lr if lr < args.min_lr else lr
-                    learner.set_lr(lr)
+    stop = False
 
-            if (epoch % 100) == 0 and steps < args.max_steps:
-                steps += args.steps
-                output_period += args.output_period
-                learner.set_steps(steps)
-                learner.set_output_period(output_period)  
-                min_val_loss = args.max_val_loss
+    while stop == False:
+
+        #ground_truth = ground_truth[:]
+        train_set.shuffle()
+
+        for i in range(0, train_set_size, sim_batch_size):
+            batch = train_set[ i : sim_batch_size + i]
+            learner.set_batch(batch)
+            learner.step()
+
+
+        # Compute val loss
+        epoch += 1
+        print('before val_set')
+        if args.val_set:
+            print('in val_set')
+            print(args.val_freq)
+            if (epoch == 1 or (epoch % args.val_freq) == 0):
+                print('val_freq')
+                learner.set_ground_truth(val_ground_truth)
+                learner.step(val=True)
+
+        learner.compute_epoch_stats()
+        learner.write_row()
+        val_loss = learner.get_val_loss()
+
+
+        if val_loss is not None:
+            if val_loss < args.max_val_loss and val_loss < min_val_loss:
+                min_val_loss = val_loss
+                learner.save_model()
+
+            if val_loss < 2.8 and (epoch % 50) == 0:
+                lr *= args.lr_decay
+                lr = args.min_lr if lr < args.min_lr else lr
+                learner.set_lr(lr)
+
+        if (epoch % 100) == 0 and steps < args.max_steps:
+            steps += args.steps
+            output_period += args.output_period
+            learner.set_steps(steps)
+            learner.set_output_period(output_period)  
+            min_val_loss = args.max_val_loss
                 
 def get_args(arguments=None):
     # fmt: off

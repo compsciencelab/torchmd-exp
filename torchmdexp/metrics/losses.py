@@ -22,7 +22,7 @@ class Losses:
     
     def squared_error(self, a, b):
         device = b.device
-        return (a-b) #.pow(2).sqrt()
+        return (a-b).pow(2).sqrt()
     
     def margin_ranking(self, x1, x2=0.0, margin = 0.0, y=1.0):
         device = x1.device

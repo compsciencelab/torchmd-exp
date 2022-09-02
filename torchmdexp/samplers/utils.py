@@ -33,30 +33,17 @@ def get_native_coords(mol, device='cpu'):
     
     return pos
 
-def moleculekit_system_factory(molecules, num_workers):
+def moleculekit_system_factory(systems_dataset, num_workers):
     
-    batch_size = len(molecules) // num_workers
+    batch_size = len(systems_dataset) // num_workers
     systems = []
     worker_info = []
     
     for i in range(num_workers):
-        batch_molecules, molecules = molecules[:batch_size], molecules[batch_size:]
-        batch_mls = []
-        batch_gt = [] 
-        batch_names = []
-        
-        for idx, mol in enumerate(batch_molecules):
-
-            native_coords = get_native_coords(mol)
-            name = mol.viewname[:-4]
-            ml = len(mol.coords)
-
-            batch_mls.append(ml)
-            batch_gt.append(native_coords)
-            batch_names.append(name)
+        batch = systems_dataset[batch_size * i:batch_size * (i+1)]
             
-        systems.append(batch_molecules)
-        info = {'mls': batch_mls, 'ground_truth': batch_gt, 'names': batch_names}
+        systems.append(batch.get('molecules'))
+        info = {'mls': batch.get('lengths'), 'ground_truth': batch.get('observables'), 'names': batch.get('names'), 'x': batch.get('x'), 'y': batch.get('y')}
         worker_info.append(info)
         
     return systems, worker_info

@@ -16,7 +16,7 @@ class Learner:
         Directory for model checkpoints and the monitor.csv
     """
     
-    def __init__(self, scheme, steps, output_period, train_names = 0 , log_dir=None, save_traj=False, keys=('train_loss', 'val_loss')):
+    def __init__(self, scheme, steps, output_period, train_names = [] , log_dir=None, save_traj=False, keys=('train_loss', 'val_loss')):
         self.log_dir = log_dir
         self.update_worker = scheme.update_worker()
         
@@ -34,7 +34,7 @@ class Learner:
         self.lr = None
         
         # Prepare results dict
-        self.results_dict = {'level':self.level, 'steps': self.steps, 'train_loss': None, 'val_loss': None}
+        self.results_dict = {'epoch': self.epoch, 'level':self.level, 'steps': self.steps, 'train_loss': None, 'val_loss': None}
         total_dict = {}
         for name in self.train_names:
             total_dict[name] = None
@@ -74,9 +74,9 @@ class Learner:
     def get_init_state(self):
         return self.update_worker.get_init_state()
     
-    def set_ground_truth(self, ground_truth):
-        """ Change ground truth """
-        self.update_worker.set_ground_truth(ground_truth)
+    def set_batch(self, batch):
+        """ Change batch data """
+        self.update_worker.set_batch(batch)
     
     def set_steps(self, steps):
         """ Change number of simulation steps """

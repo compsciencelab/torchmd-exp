@@ -62,16 +62,16 @@ class UWorker(Worker):
     def get_init_state(self):
         return self.updater.local_we_worker.get_init_state()
     
-    def set_ground_truth(self, ground_truth):
+    def set_batch(self, batch):
         
         if self.sim_execution == "centralised" and self.reweighting_execution == "centralised":
-            self.updater.local_worker.set_ground_truth(ground_truth)
+            self.updater.local_worker.set_batch(batch)
             
         elif self.sim_execution == "parallelised" and self.reweighting_execution == "centralised":
-            batch_size = len(ground_truth) // len(self.updater.remote_workers)
-            for e in self.updater.remote_workers:
-                batch_gt, ground_truth = ground_truth[:batch_size], ground_truth[batch_size:]
-                e.set_ground_truth.remote(batch_gt)
+            batch_size = len(batch) // len(self.updater.remote_workers)
+            for idx, e in enumerate(self.updater.remote_workers):
+                remote_batch = batch[batch_size * idx : batch_size  * (idx + 1)]
+                e.set_batch.remote(remote_batch)
 
     def get_val_rmsd(self):
         return self.val_rmsd
@@ -125,7 +125,7 @@ class Updater(Worker):
         torch.cuda.empty_cache() 
         
         # Reweighting step
-        train_losses, val_losses, val_dict = self.reweight_step(sim_dict, sys_names, nnp_prime, val=val)
+        train_losses, val_losses, metric_dict = self.reweight_step(sim_dict, sys_names, nnp_prime, val=val)
 
         # Set weights
         weights = self.local_we_worker.get_weights()
@@ -139,7 +139,7 @@ class Updater(Worker):
             info['train_loss'] = mean(train_losses)
             #info['avg_metric'] = mean(avg_metric)
             info['val_loss'] = None
-            info.update(val_dict)
+            info.update(metric_dict)
         elif len(val_losses) > 0:
             info['val_loss'] = mean(val_losses)
         
@@ -147,8 +147,8 @@ class Updater(Worker):
 
     def sim_step(self, steps, output_period):
         
-        sim_dict = {}
-        sim_results = []
+        sim_dict = defaultdict(list)
+        
         if self.sim_execution == "centralised":
             sim_dict = self.local_worker.simulate(steps, output_period)
             nnp_prime = copy.deepcopy(self.local_worker.get_nnp())
@@ -156,19 +156,19 @@ class Updater(Worker):
         elif self.sim_execution == "parallelised":
             pending = [e.simulate.remote(steps, output_period) for e in self.remote_workers]
             sim_results = ray_get_and_free(pending)
-            [sim_dict.update(result) for result in sim_results]
+            for result in sim_results:
+                [sim_dict[key].extend(result[key]) for key in result.keys()]  
             nnp_prime = copy.deepcopy(ray.get(self.remote_workers[0].get_nnp.remote()))
             
-        sys_names = list(sim_dict.keys())
-        random.shuffle(sys_names) # rdmize systems
-        
+        sys_names = list(sim_dict['names'])
+                
         return sim_dict, sys_names, nnp_prime
 
-    def reweight_step(self, sim_dict, sys_names, nnp_prime, train_losses = [], val_losses = [], val_dict = {}, val=False):
+    def reweight_step(self, sim_dict, sys_names, nnp_prime, train_losses = [], val_losses = [], metric_dict = {}, val=False):
         
         train_losses = []
         val_losses = []
-        val_dict = {}
+        metric_dict = {}
         
         if self.reweighting_execution == "centralised":
             num_batches = len(sys_names) // self.batch_size if self.batch_size < len(sys_names) else 1
@@ -180,29 +180,28 @@ class Updater(Worker):
                 grads_to_average = []
 
                 # Mini-batch update
-                for s in batch_names:
-                    system_result = sim_dict[s]
+                for idx, s in enumerate(batch_names):
+                    system_result = {key:sim_dict[key][idx] for key in sim_dict.keys()}
+
                     # Compute Train loss
                     if val == False: 
-                        grads, loss = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
+                        grads, loss, avg_metric = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
                         grads_to_average.append(grads)
                         train_losses.append(loss)
-
-                        # Compute Average Metric Values
-                        #val_loss = self.local_we_worker.compute_val_loss(**system_result)
-                        #val_dict[s] = val_loss
-                        #val_losses.append(val_loss)    
-                        torch.cuda.empty_cache()
                     
                     if val == True:
-                        _ , loss = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
+                        _ , loss, avg_metric = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
                         val_losses.append(loss)
+                    
+                    # Save Average Metric Values
+                    metric_dict[s] = avg_metric
+                    torch.cuda.empty_cache()
 
                 # Optim step
                 if len(grads_to_average) > 0:
                     grads_to_average = average_gradients(grads_to_average)
                     self.local_we_worker.apply_gradients(grads_to_average)
         
-        return train_losses, val_losses, val_dict
+        return train_losses, val_losses, metric_dict
         
         
