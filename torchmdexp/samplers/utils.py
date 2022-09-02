@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 import copy
+from collections import Counter
+
 
 def get_embeddings(mol, device, replicas, multi_chain=False):
     """ 
