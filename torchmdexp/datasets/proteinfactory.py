@@ -5,12 +5,12 @@ import re
 
 class ProteinFactory:
     
-    def __init__(self, datasets, ids, topology=('bonds', 'angles', 'dihedrals')):
+    def __init__(self, datasets, ids, num_levels=None, topology=('bonds', 'angles', 'dihedrals')):
         self.ids = [l.rstrip() for l in open(os.path.join(datasets, ids))]
         self.topology = topology
         
         self.levels = {}
-        self.num_levels = 0
+        self.num_levels = num_levels
         
     def set_proteins_dataset(self, data_dir):
         
@@ -23,8 +23,13 @@ class ProteinFactory:
     
     def set_levels(self, levels_dir):
         levels = [filename for filename in os.listdir(levels_dir) if not filename.startswith('.')]
-        levels = [x for _, x in sorted(zip([int(re.findall(r'\d+', level)[0]) for level in levels], levels))]
-        self.num_levels = len(levels)
+        if self.num_levels and self.num_levels <= len(levels):
+            pass
+        else:
+            self.num_levels = len(levels)
+            print(f'Using {self.num_levels} dataset levels')
+        
+        levels = [x for _, x in sorted(zip([int(re.findall(r'\d+', level)[0]) for level in levels], levels))][:self.num_levels]
         
         [self.set_level(idx, os.path.join(levels_dir, l)) for idx, l in enumerate(levels)]
         
@@ -33,7 +38,9 @@ class ProteinFactory:
                               'init_states': self.set_proteins_dataset(os.path.join(levels_dir, 'init_states'))
                              }
         
-    def get_level(self, level):
+    def get_level(self, level, from_gt=False):
+        if from_gt:
+            return self.levels[level]['ground_truth']
         
         return self.levels[level]['init_states']
     
