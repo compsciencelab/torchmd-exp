@@ -177,7 +177,7 @@ def main():
             if val_loss < args.max_val_loss and val_loss < min_val_loss:
                 min_val_loss = val_loss
                 learner.save_model()
-                if epoch_level < 10: min_val_loss = args.thresh_lvlup * 1.1:
+                if epoch_level < 10: min_val_loss = args.thresh_lvlup * 1.1
                 
             if val_loss < 2 * args.thresh_lvlup and (epoch % 5) == 0:
                 lr *= args.lr_decay
