@@ -15,6 +15,7 @@ from torchmdexp.nnp.models import output_modules
 from torchmdexp.nnp.models.utils import rbf_class_mapping, act_class_mapping
 from torchmdexp.nnp.module import NNP
 from torchmdexp.utils.utils import save_argparse
+from torchmdexp.forcefields.full_pseudo_ff import FullPseudoFF
 import ray
 import numpy as np
 import os
@@ -63,7 +64,11 @@ def main():
 
     
     # 1. Define the Sampler which performs the simulation and returns the states and energies
+    
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
+                                                             ff_type = args.ff_type, 
+                                                             ff_pseudo_scale = args.ff_pseudo_scale,
+                                                             ff_full_scale = args.ff_full_scale,
                                                              replicas=args.replicas, cutoff=args.cutoff, rfa=args.rfa,
                                                              switch_dist=args.switch_dist, 
                                                              exclusions=args.exclusions, timestep=args.timestep,precision=torch.double, 
@@ -260,8 +265,6 @@ def get_args(arguments=None):
     
     # Torchmdexp specific
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
-    parser.add_argument('--forcefield', default="/shared/carles/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
-    parser.add_argument('--forceterms', nargs='+', default=[], help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--cutoff', default=None, type=float, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--rfa', default=False, action='store_true', help='Enable reaction field approximation')
     parser.add_argument('--replicas', type=int, default=1, help='Number of different replicas to run')
@@ -274,7 +277,12 @@ def get_args(arguments=None):
     parser.add_argument('--steps',type=int,default=400,help='Total number of simulation steps')
     parser.add_argument('--max_steps',type=int,default=400,help='Max Total number of simulation steps')
     parser.add_argument('--output-period',type=int,default=100,help='Pick one state every period')
-
+    parser.add_argument('--forcefield', default="/shared/carles/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
+    parser.add_argument('--ff_type', type=str, choices=['file', 'full_pseudo_receptor'], default='file', help='Type of forcefield to use')
+    parser.add_argument('--ff_pseudo_scale', type=float, default=1, help='Value that divides pseudobond strength')
+    parser.add_argument('--ff_full_scale', type=float, default=1, help='Value that divides all bonds strength')
+    parser.add_argument('--ff_save', type=str, default=None, help='Where to save the forcefield if required')
+    parser.add_argument('--forceterms', nargs='+', default=[], help='Forceterms to include, e.g. --forceterms Bonds LJ')
     # other args
     parser.add_argument('--derivative', default=True, type=bool, help='If true, take the derivative of the prediction w.r.t coordinates')
     parser.add_argument('--cutoff-lower', type=float, default=0.0, help='Lower cutoff in model')
