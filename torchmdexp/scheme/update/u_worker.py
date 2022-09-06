@@ -139,9 +139,10 @@ class Updater(Worker):
             info['train_loss'] = mean(train_losses)
             #info['avg_metric'] = mean(avg_metric)
             info['val_loss'] = None
-            info.update(metric_dict)
         elif len(val_losses) > 0:
             info['val_loss'] = mean(val_losses)
+            
+        info.update(metric_dict)
         
         return info
 

@@ -38,7 +38,7 @@ class ProteinFactory:
         return self.train_set, self.val_set
     
     def get_names(self):
-        return self.dataset.get_names()
+        return self.dataset.get('names')
     
     def shuffle(self):
         

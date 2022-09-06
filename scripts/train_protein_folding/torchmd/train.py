@@ -51,9 +51,9 @@ def main():
 
     # Load training molecules
     protein_factory = ProteinFactory()
-    protein_factory.load_dataset('/shared/carles/notebooks/dataset.npy')
+    protein_factory.load_dataset('/shared/carles/work/notebooks/dataset.npy')
     
-    train_set, val_set = protein_factory.train_val_split(val_size=0.1)
+    train_set, val_set = protein_factory.train_val_split(val_size=0.2)
     
     dataset_names = protein_factory.get_names()
     train_set_size = len(train_set)
@@ -139,6 +139,7 @@ def main():
             learner.step()
 
         # Val step
+        epoch += 1
         if len(val_set) > 0:
             if (epoch == 1 or (epoch % args.val_freq) == 0):
                 for i in range(0, val_set_size, sim_batch_size):
@@ -149,8 +150,6 @@ def main():
         learner.compute_epoch_stats()
         learner.write_row()
         val_loss = learner.get_val_loss()
-        
-        epoch += 1
 
         if val_loss is not None:
             if val_loss < args.max_val_loss and val_loss < min_val_loss:
