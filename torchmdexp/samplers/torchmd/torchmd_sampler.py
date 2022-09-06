@@ -232,14 +232,11 @@ class TorchMD_Sampler(Sampler):
         sample_dict = copy.deepcopy(self.sim_dict)
         
         # Set states and prior energies dicts
-        
         sample_dict['states'] = []
         sample_dict['U_prior'] = [torch.zeros([nstates], device='cpu') for _ in self.names]
+        sample_dict['x'] = self.x
+        sample_dict['y'] = self.y
         
-        #for idx , ml in enumerate(self.mls):
-        #    sample_dict[self.names[idx]]['states'] = None
-        #    sample_dict[self.names[idx]]['U_prior'] = torch.zeros([nstates], device='cpu')
-
         # Run the simulation
         for i in iterator:
             Ekin, Epot, T = integrator.step(niter=output_period)

@@ -28,6 +28,7 @@ class Learner:
         
         self.train_losses = []
         self.val_losses = []
+        self.train_loss = None
         self.val_loss = None
         self.level = 0
         self.epoch = 1
@@ -36,11 +37,13 @@ class Learner:
         # Prepare results dict
         self.results_dict = {'epoch': self.epoch, 'level':self.level, 'steps': self.steps, 'train_loss': None, 'val_loss': None}
         total_dict = {}
-        for name in self.train_names:
-            total_dict[name] = None
         for key in keys:
             if key not in total_dict.keys():
                 total_dict[key] = 0
+                
+        for name in self.train_names:
+            total_dict[name] = None
+        
         self.results_dict.update(total_dict)
         keys = tuple([key for key in self.results_dict.keys()])
         self.logger = LogWriter(self.log_dir,keys=keys)
@@ -86,7 +89,11 @@ class Learner:
     
     def save_model(self):
         
-        path = f'{self.log_dir}/epoch={self.epoch}-train_loss={self.train_loss:.4f}-val_loss={self.val_loss:.4f}.ckpt'
+        if self.val_loss is not None:
+            path = f'{self.log_dir}/epoch={self.epoch}-train_loss={self.train_loss:.4f}-val_loss={self.val_loss:.4f}.ckpt'
+        else: 
+            path = f'{self.log_dir}/epoch={self.epoch}-train_loss={self.train_loss:.4f}.ckpt'
+            
         self.update_worker.save_model(path)
     
     def compute_epoch_stats(self):
@@ -112,6 +119,9 @@ class Learner:
 
     def get_val_loss(self):
         return self.val_loss
+    
+    def get_train_loss(self):
+        return self.train_loss
     
     def set_lr(self, lr):
         self.update_worker.set_lr(lr)

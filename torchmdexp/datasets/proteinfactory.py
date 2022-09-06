@@ -6,6 +6,7 @@ import re
 from moleculekit.molecule import Molecule
 import copy
 from torchmdexp.samplers.utils import get_native_coords
+import torch
 
 class ProteinFactory:
     
@@ -48,10 +49,11 @@ class ProteinFactory:
             self.dataset.shuffle()
     
     
-    def create_dataset(self, data_dir, pdb_ids, levels_dir, out_dir = '', topology = ('bonds', 'angles', 'dihedrals')):
+    def create_dataset(self, dataset, data_dir, out_dir = '', topology = ('bonds', 'angles', 'dihedrals'), x = None, y = None):
         
         topo_dict = dict((x, True) for x in topology)
-        pdb_ids = [l.rstrip() for l in open(os.path.join(data_dir, pdb_ids))]
+        pdb_ids = [l.rstrip() for l in open(dataset)]
+        
         dataset = {'names' : [],
                    'molecules': [],
                    'observables': [],
@@ -60,26 +62,47 @@ class ProteinFactory:
                    'y': []}
         
         for idx, protein in enumerate(pdb_ids):
-            structure = os.path.join(levels_dir, protein + '.pdb')
-            frames = os.path.join(levels_dir, protein + '.xtc')
             
-            if os.path.isfile(structure):
-                mol = Molecule(structure)
-                if topo_dict:
-                    mol = pdb2psf_CA(mol, **topo_dict)   
+            observable = os.path.join(data_dir, 'observables' , protein + '.pdb')
+            init_state = os.path.join(data_dir, 'molecules' , protein + '.xtc')
+            coords = os.path.join(data_dir, 'x' , protein + '.npy')
+            delta = os.path.join(data_dir, 'y' , protein + '.npy')
+                 
+            if os.path.isfile(observable):
+                mol = Molecule(observable)    
                 native_mol = copy.deepcopy(mol) 
                 native_coords = get_native_coords(native_mol)
                 
-            elif os.path.isfile(frames):
+            if os.path.isfile(init_state):
                 mol = Molecule(frames)
-                               
+                
+            if topo_dict:
+                    mol = pdb2psf_CA(mol, **topo_dict)  
+            
+            if os.path.isfile(coords) and os.path.isfile(delta):
+                x, y = np.load(coords), np.load(delta)
+                
+                # Positions to torch tensor
+                pos = torch.zeros(x.shape)
+                pos[:] = torch.tensor(
+                          x, dtype=pos.dtype,
+                      )
+                x = pos.type(torch.float64)
+
+                # Forces to torch tensor
+                forces = torch.tensor(
+                    y, dtype=pos.dtype,
+                )
+                y = forces.type(torch.float64).squeeze()
+                
+            
             
             dataset['names'].append(protein)
             dataset['molecules'].append(mol)
             dataset['observables'].append(native_coords)
             dataset['lengths'].append(len(mol.coords))
-            dataset['x'].append(None)
-            dataset['y'].append(None)
+            dataset['x'].append(x)
+            dataset['y'].append(y)
             
         np.save(out_dir ,dataset)
     

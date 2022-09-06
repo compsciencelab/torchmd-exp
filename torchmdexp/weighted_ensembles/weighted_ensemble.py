@@ -113,7 +113,6 @@ class WeightedEnsemble:
             ext_energies, _ = self.nnp(embeddings, pos, batch)
             del _
         
-        #ext_forces.detach()
         return ext_energies.squeeze(1), ext_energies_hat.squeeze(1)
                        
     def _weights(self, states, embeddings, U_prior, nnp_prime):
@@ -155,35 +154,57 @@ class WeightedEnsemble:
         
         return w_ensemble, avg_metric
     
-    def compute_loss(self, ground_truth, states, embeddings, U_prior, nnp_prime, energy_weight=0):
+    def compute_loss(self, ground_truth, states, embeddings, U_prior, nnp_prime, x = None, y = None, energy_weight=1.0):
         
         w_e, avg_metric = self.compute_we(states, ground_truth, embeddings, U_prior, nnp_prime)
+        values_dict = {}
         if energy_weight == 0:
-            loss = self.loss_fn(w_e) 
+            loss = self.loss_fn(w_e)
+            
         else:
-            energy_loss = self.compute_energy_loss(ground_truth, equil_energy, nnp_prime)
-            loss = self.loss_fn(w_e) + energy_weight * energy_loss
-        return loss, avg_metric
+            we_loss = self.loss_fn(w_e)
+            energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime)
+            
+            loss = we_loss + energy_weight * energy_loss
+            values_dict['loss_2'] = energy_loss.item()
         
-    def compute_energy_loss(self, equil_structure, equil_energy, nnp_prime):
+        values_dict['avg_metric'] = avg_metric
+        values_dict['loss_1'] = we_loss.item()        
         
-        pos = equil_structure.to(self.device).type(torch.float32).reshape(-1, 3)
-        embeddings = embeddings.repeat(equil_structure.shape[0] , 1)
+        return loss, values_dict
+        
+    def compute_energy_loss(self, x, y, embeddings, nnp_prime):
+        
+        # Send y to device
+        y = y.to(self.device)
+        
+        # Compute the delta force and energy
+        pos = x.to(self.device).type(torch.float32).reshape(-1, 3)
+        embeddings = embeddings.repeat(x.shape[0] , 1)
         batch = torch.arange(embeddings.size(0), device=self.device).repeat_interleave(
             embeddings.size(1)
         )
         embeddings = embeddings.reshape(-1).to(self.device)
         
-        energy, forces = nnp_prime(embeddings, pos, batch)
+        if nnp_prime == None:
+            energy, forces = self.nnp(embeddings, pos, batch)
+        else:
+            energy, forces = nnp_prime(embeddings, pos, batch)
+
+        #print('PREDICTED FORCES')
+        #print(forces)
         
-        return l1_loss(equil_energy, energy)
+        #print('FORCES')
+        #print(y)        
+        
+        return l1_loss(y, forces)
         
     
-    def compute_gradients(self, names, ground_truth, states, embeddings, U_prior, nnp_prime, grads_to_cpu=True, val=False):
+    def compute_gradients(self, names, ground_truth, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
         
         if val == False:
             self.optimizer.zero_grad()
-            loss, avg_metric = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime)
+            loss, values_dict = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime, x = x, y = y)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
 
@@ -200,7 +221,7 @@ class WeightedEnsemble:
             with torch.no_grad():
                 loss = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime)
                     
-        return grads, loss.item(), avg_metric
+        return grads, loss.item(), values_dict
         
     
     def get_loss(self):

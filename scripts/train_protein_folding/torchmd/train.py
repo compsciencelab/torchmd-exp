@@ -51,21 +51,14 @@ def main():
 
     # Load training molecules
     protein_factory = ProteinFactory()
-    protein_factory.load_dataset('/shared/carles/work/notebooks/dataset.npy')
+    protein_factory.load_dataset(args.dataset)
     
-    train_set, val_set = protein_factory.train_val_split(val_size=0.2)
+    train_set, val_set = protein_factory.train_val_split(val_size=0.0)
     
     dataset_names = protein_factory.get_names()
     train_set_size = len(train_set)
     val_set_size = len(val_set)
     
-    # Load validation molecules
-    if args.val_set:
-        val_names = [l.rstrip() for l in open(os.path.join(args.datasets, args.val_set))]
-        val_protein_factory = ProteinFactory(args.datasets, args.val_set)
-        val_protein_factory.set_levels(args.val_dir)
-        val_ground_truth = val_protein_factory.get_ground_truth(0)
-
     
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
@@ -121,12 +114,12 @@ def main():
 
     # 4. Define Learner
     learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir, save_traj=args.save_traj,
-                      keys = ('level', 'steps', 'train_loss', 'val_loss', 'epoch'))    
+                      keys = ('epoch', 'level', 'steps', 'train_loss', 'val_loss', 'loss_1', 'loss_2'))    
 
     
     # 5. Define epoch and Levels
     epoch = 0        
-    min_val_loss = args.max_val_loss
+    max_loss = args.max_loss
     stop = False
     while stop == False:
 
@@ -149,24 +142,31 @@ def main():
 
         learner.compute_epoch_stats()
         learner.write_row()
+        
+        loss = learner.get_train_loss()
         val_loss = learner.get_val_loss()
 
-        if val_loss is not None:
-            if val_loss < args.max_val_loss and val_loss < min_val_loss:
-                min_val_loss = val_loss
+        if val_loss is not None and len(val_set) > 0:
+            if val_loss < max_loss:
+                max_loss = val_loss
                 learner.save_model()
-
-            if val_loss < 2.8 and (epoch % 50) == 0:
-                lr *= args.lr_decay
-                lr = args.min_lr if lr < args.min_lr else lr
-                learner.set_lr(lr)
-
+        else:
+            if loss < max_loss:
+                max_loss = loss
+                learner.save_model()
+            
+            
+            #if val_loss < 2.8 and (epoch % 50) == 0:
+            #    lr *= args.lr_decay
+            #    lr = args.min_lr if lr < args.min_lr else lr
+            #    learner.set_lr(lr)
+            
+            
         if (epoch % 100) == 0 and steps < args.max_steps:
             steps += args.steps
             output_period += args.output_period
             learner.set_steps(steps)
             learner.set_output_period(output_period)  
-            min_val_loss = args.max_val_loss
                 
 def get_args(arguments=None):
     # fmt: off
@@ -183,7 +183,7 @@ def get_args(arguments=None):
     parser.add_argument('--batch-size', default=16, type=int, help='batch size')
     parser.add_argument('--sim-batch-size', default=64, type=int, help='simulation batch size')
     parser.add_argument('--max-grad-norm', default=0.7, type=float, help= 'Max grad norm for gradient clipping')
-    parser.add_argument('--max-val-loss', default=1.5, type=float, help= 'Max val loss to increase level')
+    parser.add_argument('--max-loss', default=1.5, type=float, help= 'Max loss to save model')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--lr-decay', default=1, type=float, help='learning rate decay')
     parser.add_argument('--min-lr', default=1e-4, type=float, help='minimum value of lr')
@@ -217,10 +217,7 @@ def get_args(arguments=None):
 
     # dataset specific
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
-    parser.add_argument('--val_dir', default=None, help='Directory with validation data')
-    parser.add_argument('--datasets', default='/shared/carles/torchmd-exp/datasets', type=str, help='Directory with the files with the names of train and val proteins')
-    parser.add_argument('--train-set',  default=None, help='File with the names of the proteins in the train set ')
-    parser.add_argument('--val-set',  default=None, help='File with the names of the proteins in the validation set ')
+    parser.add_argument('--dataset',  default=None, help='File with the dataset')
 
     # Torchmdexp specific
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
