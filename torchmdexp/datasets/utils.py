@@ -68,7 +68,8 @@ CA_MAP = {
      ('VAL','CA'):'CAV'}
 
 
-def pdb2psf_CA(mol, bonds=True, angles=True, dihedrals=True):
+
+def _pdb2psf_CA(mol, bonds=True, angles=True, dihedrals=True):
 
     n = mol.numAtoms
     atom_types = []
@@ -131,3 +132,41 @@ def pdb2psf_CA(mol, bonds=True, angles=True, dihedrals=True):
     mol.dihedrals = all_dihedrals
     
     return mol
+
+
+
+def _pdb2full_CA(mol):
+    """Create topology for fully pseudobonded receptor."""
+    import numpy as np
+
+    atom_types = [f'1{i:0>4d}' for i in range(mol.numAtoms)]
+
+    chains = set(mol.chain)
+    chain_idxs = [np.where(mol.chain == chain)[0][0] for chain in chains]
+    chain_idxs.sort()
+
+    # Receptor
+    all_bonds = np.empty((0, 2), dtype=np.int32)
+    for i in range(0, chain_idxs[1]):
+        all_bonds = np.concatenate(
+            (all_bonds, np.array([(i, j) for j in range(i+1,chain_idxs[1])], dtype=np.int32).reshape(-1,2)),
+            axis=0
+        )
+
+    # Ligand
+    all_bonds = np.concatenate(
+        (
+            all_bonds,
+            np.concatenate(
+                (
+                    np.arange(chain_idxs[1], mol.numAtoms - 1).reshape((-1, 1)), 
+                    np.arange(chain_idxs[1] + 1, mol.numAtoms).reshape((-1, 1))
+                    ),
+                axis=1
+                )
+            ), axis=0
+        )
+
+    mol.bonds = all_bonds
+    mol.atomtype = np.array(atom_types)
+    return all_bonds

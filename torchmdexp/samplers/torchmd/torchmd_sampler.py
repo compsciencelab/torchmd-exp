@@ -7,6 +7,7 @@ from torchmd.integrator import Integrator, maxwell_boltzmann
 from torchmd.parameters import Parameters
 from torchmd.systems import System
 from torchmdexp.nnp.calculators import External
+from torchmdexp.forcefields.full_pseudo_ff import FullPseudoFF
 import collections
 import numpy as np
 import copy
@@ -87,6 +88,10 @@ class TorchMD_Sampler(Sampler):
                  langevin_gamma=0.1,
                  x = None,
                  y = None
+                 ff_type='file',
+                 ff_pseudo_scale=1,
+                 ff_full_scale=1,
+                 ff_save=None
                 ):
         
         self.mols = mols
@@ -98,6 +103,10 @@ class TorchMD_Sampler(Sampler):
         self.replicas = replicas
         self.forceterms = forceterms
         self.forcefield = forcefield
+        self.ff_type = ff_type
+        self.ff_pseudo_scale = ff_pseudo_scale
+        self.ff_full_scale = ff_full_scale
+        self.ff_save = ff_save
         self.cutoff = cutoff
         self.rfa = rfa
         self.switch_dist = switch_dist
@@ -134,7 +143,11 @@ class TorchMD_Sampler(Sampler):
                        precision=torch.double,
                        temperature=350,
                        langevin_temperature=350,
-                       langevin_gamma=0.1):
+                       langevin_gamma=0.1,
+                       ff_type='file',
+                       ff_pseudo_scale=1,
+                       ff_full_scale=1,
+                       ff_save=None):
         """ 
         Returns a function to create new TorchMD_Sampler instances.
         
@@ -194,8 +207,11 @@ class TorchMD_Sampler(Sampler):
                        langevin_temperature,
                        langevin_gamma,
                        x = x,
-                       y = y
-                      )
+                       y = y,
+                       ff_type,
+                       ff_pseudo_scale,
+                       ff_full_scale,
+                       ff_save)
         
         return create_sampler_instance
 
@@ -292,10 +308,17 @@ class TorchMD_Sampler(Sampler):
         self.sim_dict['embeddings'] = []
         for idx, ml in enumerate(mls):
             mol_embeddings, my_e = my_e[:, :ml], my_e[:, ml:]
-            self.sim_dict['embeddings'].append(mol_embeddings.to('cpu'))
-                
-        # Create forces        
-        ff = ForceField.create(mol, self.forcefield)        
+            self.sim_dict['embeddings'].append(mol_embeddings.to('cpu'))     
+
+        # Create forces
+        if self.ff_type == 'file':
+            ff = ForceField.create(mol, self.forcefield)        
+        elif self.ff_type == 'full_pseudo_receptor':
+            ff = FullPseudoFF().create([mol], self.forcefield, self.ff_pseudo_scale, self.ff_full_scale, self.ff_save)
+        else:
+            raise ValueError('ff_type should be ("file" | "full_pseudo_receptor") but ',
+                             'got ' + self.ff_type + ' instead')
+                             
         parameters = Parameters(ff, mol, terms=self.forceterms, device=self.device) 
         
         forces = Forces(parameters,terms=self.forceterms, external=external, cutoff=self.cutoff, 

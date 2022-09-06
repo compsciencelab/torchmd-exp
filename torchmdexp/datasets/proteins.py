@@ -4,7 +4,7 @@ from moleculekit.molecule import Molecule
 import shutil
 import torch
 import numpy as np
-from .utils import CA_MAP, CACB_MAP
+from .utils import CA_MAP, CACB_MAP, _pdb2psf_CA
 import copy
 import random
 from operator import itemgetter 
@@ -78,3 +78,4 @@ class ProteinDataset(Dataset):
         keys = list(self.dataset.keys())
         for idx, rdm_list in enumerate(zip(*temp)):
             self.dataset[keys[idx]] = list(rdm_list)
+
