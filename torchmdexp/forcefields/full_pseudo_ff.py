@@ -2,7 +2,7 @@ import traceback
 import numpy as np
 from torchmd.forcefields.forcefield import ForceField, _ForceFieldBase
 import yaml
-from torchmdexp.datasets.utils import CA_MAP, _pdb2full_CA, _pdb2psf_CA
+from torchmdexp.datasets.utils import CA_MAP, pdb2full_CA, pdb2psf_CA
 import os
 
 class FullPseudoFF():

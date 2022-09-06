@@ -4,7 +4,7 @@ from moleculekit.molecule import Molecule
 import shutil
 import torch
 import numpy as np
-from .utils import CA_MAP, CACB_MAP, _pdb2psf_CA
+from .utils import CA_MAP, CACB_MAP, pdb2psf_CA
 import copy
 import random
 from operator import itemgetter 

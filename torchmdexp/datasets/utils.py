@@ -68,8 +68,7 @@ CA_MAP = {
      ('VAL','CA'):'CAV'}
 
 
-
-def _pdb2psf_CA(mol, bonds=True, angles=True, dihedrals=True):
+def pdb2psf_CA(mol, bonds=True, angles=True, dihedrals=True):
 
     n = mol.numAtoms
     atom_types = []
@@ -134,8 +133,7 @@ def _pdb2psf_CA(mol, bonds=True, angles=True, dihedrals=True):
     return mol
 
 
-
-def _pdb2full_CA(mol):
+def pdb2full_CA(mol):
     """Create topology for fully pseudobonded receptor."""
     import numpy as np
 
