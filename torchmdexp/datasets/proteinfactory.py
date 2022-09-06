@@ -117,13 +117,8 @@ class ProteinFactory:
 a = """    
     def set_levels(self, levels_dir):
         levels = [filename for filename in os.listdir(levels_dir) if not filename.startswith('.')]
-        if self.num_levels and self.num_levels <= len(levels):
-            pass
-        else:
-            self.num_levels = len(levels)
-            print(f'Using {self.num_levels} dataset levels')
-        
-        levels = [x for _, x in sorted(zip([int(re.findall(r'\d+', level)[0]) for level in levels], levels))][:self.num_levels]
+        levels = [x for _, x in sorted(zip([int(re.findall(r'\d+', level)[0]) for level in levels], levels))]
+        self.num_levels = len(levels)
         
         [self.set_level(idx, os.path.join(levels_dir, l)) for idx, l in enumerate(levels)]
         
@@ -132,9 +127,7 @@ a = """
                               'init_states': self.set_proteins_dataset(os.path.join(levels_dir, 'init_states'))
                              }
         
-    def get_level(self, level, from_gt=False):
-        if from_gt:
-            return self.levels[level]['ground_truth']
+    def get_level(self, level):
         
         return self.levels[level]['init_states']
     
