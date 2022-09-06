@@ -86,6 +86,8 @@ class TorchMD_Sampler(Sampler):
                  temperature=350,
                  langevin_temperature=350,
                  langevin_gamma=0.1,
+                 x = None,
+                 y = None
                  ff_type='file',
                  ff_pseudo_scale=1,
                  ff_full_scale=1,
@@ -95,6 +97,8 @@ class TorchMD_Sampler(Sampler):
         self.mols = mols
         self.mls = mls
         self.names = names
+        self.x = x
+        self.y = y
         self.device = device
         self.replicas = replicas
         self.forceterms = forceterms
@@ -183,7 +187,7 @@ class TorchMD_Sampler(Sampler):
             creates a new TorchMD_Sampler instance.
         """
 
-        def create_sampler_instance(mol, nnp, device, mls, names, ground_truth):
+        def create_sampler_instance(mol, nnp, device, mls, names, ground_truth, x=None, y=None):
             return cls(mol,
                        nnp,
                        device,
@@ -202,6 +206,8 @@ class TorchMD_Sampler(Sampler):
                        temperature,
                        langevin_temperature,
                        langevin_gamma,
+                       x = x,
+                       y = y,
                        ff_type,
                        ff_pseudo_scale,
                        ff_full_scale,
@@ -242,16 +248,17 @@ class TorchMD_Sampler(Sampler):
         sample_dict = copy.deepcopy(self.sim_dict)
         
         # Set states and prior energies dicts
-        for idx , ml in enumerate(self.mls):
-            sample_dict[self.names[idx]]['states'] = None
-            sample_dict[self.names[idx]]['U_prior'] = torch.zeros([nstates], device='cpu')
-
+        sample_dict['states'] = []
+        sample_dict['U_prior'] = [torch.zeros([nstates], device='cpu') for _ in self.names]
+        sample_dict['x'] = self.x
+        sample_dict['y'] = self.y
+        
         # Run the simulation
         for i in iterator:
             Ekin, Epot, T = integrator.step(niter=output_period)
             states[i-1] = integrator.systems.pos.to("cpu")
                             
-        sample_dict = self._split_states(states, sample_dict)
+        sample_dict = self._split_states(states, sample_dict)          
         self.sim_dict.update(sample_dict)
         return self.sim_dict
 
@@ -275,14 +282,15 @@ class TorchMD_Sampler(Sampler):
     def get_ground_truth(self, gt):
         return self.sim_dict[gt]['gt']
     
-    def set_ground_truth(self, ground_truth):
+    def set_batch(self, batch):
         
-        self.names = [mol.viewname[:-4] for mol in ground_truth]
-        self.mls = [len(mol.resname) for mol in ground_truth]
-        gt_dict = {name: {'ground_truth': get_native_coords(ground_truth[idx])} for idx, name in enumerate(self.names)}
-        self.sim_dict = gt_dict
-        self.mols = ground_truth
-
+        self.names = batch.get('names')
+        self.mls = batch.get('lengths')
+        self.mols = batch.get('molecules')
+        
+        self.sim_dict['names'] = self.names
+        self.sim_dict['ground_truth'] = batch.get('observables')
+        
     def _set_integrator(self, mols, mls):
         
         # Create simulation system
@@ -297,9 +305,10 @@ class TorchMD_Sampler(Sampler):
         
         # Add the embeddings to the sim_dict
         my_e = embeddings 
+        self.sim_dict['embeddings'] = []
         for idx, ml in enumerate(mls):
             mol_embeddings, my_e = my_e[:, :ml], my_e[:, ml:]
-            self.sim_dict[self.names[idx]]['embeddings'] = mol_embeddings.to('cpu')
+            self.sim_dict['embeddings'].append(mol_embeddings.to('cpu'))     
 
         # Create forces
         if self.ff_type == 'file':
@@ -309,6 +318,7 @@ class TorchMD_Sampler(Sampler):
         else:
             raise ValueError('ff_type should be ("file" | "full_pseudo_receptor") but ',
                              'got ' + self.ff_type + ' instead')
+                             
         parameters = Parameters(ff, mol, terms=self.forceterms, device=self.device) 
         
         forces = Forces(parameters,terms=self.forceterms, external=external, cutoff=self.cutoff, 
@@ -332,5 +342,5 @@ class TorchMD_Sampler(Sampler):
         """
         for idx, ml in enumerate(self.mls):
             states_mol, states = states[:, :ml, :], states[:, ml:, :]
-            sample_dict[self.names[idx]]['states'] = states_mol
+            sample_dict['states'].append(states_mol)
         return sample_dict

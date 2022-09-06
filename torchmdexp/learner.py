@@ -16,7 +16,7 @@ class Learner:
         Directory for model checkpoints and the monitor.csv
     """
     
-    def __init__(self, scheme, steps, output_period, train_names = 0 , log_dir=None, save_traj=False, keys=('train_loss', 'val_loss')):
+    def __init__(self, scheme, steps, output_period, train_names = [] , log_dir=None, save_traj=False, keys=('train_loss', 'val_loss')):
         self.log_dir = log_dir
         self.update_worker = scheme.update_worker()
         
@@ -28,19 +28,22 @@ class Learner:
         
         self.train_losses = []
         self.val_losses = []
+        self.train_loss = None
         self.val_loss = None
         self.level = 0
         self.epoch = 1
         self.lr = None
         
         # Prepare results dict
-        self.results_dict = {'level':self.level, 'steps': self.steps, 'train_loss': None, 'val_loss': None}
+        self.results_dict = {'epoch': self.epoch, 'level':self.level, 'steps': self.steps, 'train_loss': None, 'val_loss': None}
         total_dict = {}
-        for name in self.train_names:
-            total_dict[name] = None
         for key in keys:
             if key not in total_dict.keys():
                 total_dict[key] = 0
+                
+        for name in self.train_names:
+            total_dict[name] = None
+        
         self.results_dict.update(total_dict)
         keys = tuple([key for key in self.results_dict.keys()])
         self.logger = LogWriter(self.log_dir,keys=keys)
@@ -50,7 +53,6 @@ class Learner:
         
         # Update step
         info = self.update_worker.step(self.steps, self.output_period, val)
-        print(val)
         self.results_dict.update(info)
         self.results_dict['level'] = self.level
         self.results_dict['steps'] = self.steps
@@ -58,7 +60,6 @@ class Learner:
         if val == False:
             self.train_losses.append(info['train_loss'])
         else:
-            print('in val losses inside learner')
             self.val_losses.append(info['val_loss'])
                 
     def level_up(self):
@@ -74,9 +75,9 @@ class Learner:
     def get_init_state(self):
         return self.update_worker.get_init_state()
     
-    def set_ground_truth(self, ground_truth):
-        """ Change ground truth """
-        self.update_worker.set_ground_truth(ground_truth)
+    def set_batch(self, batch):
+        """ Change batch data """
+        self.update_worker.set_batch(batch)
     
     def set_steps(self, steps):
         """ Change number of simulation steps """
@@ -88,7 +89,11 @@ class Learner:
     
     def save_model(self):
         
-        path = f'{self.log_dir}/epoch={self.epoch}-train_loss={self.train_loss:.4f}-val_loss={self.val_loss:.4f}.ckpt'
+        if self.val_loss is not None:
+            path = f'{self.log_dir}/epoch={self.epoch}-train_loss={self.train_loss:.4f}-val_loss={self.val_loss:.4f}.ckpt'
+        else: 
+            path = f'{self.log_dir}/epoch={self.epoch}-train_loss={self.train_loss:.4f}.ckpt'
+            
         self.update_worker.save_model(path)
     
     def compute_epoch_stats(self):
@@ -114,6 +119,9 @@ class Learner:
 
     def get_val_loss(self):
         return self.val_loss
+    
+    def get_train_loss(self):
+        return self.train_loss
     
     def set_lr(self, lr):
         self.update_worker.set_lr(lr)

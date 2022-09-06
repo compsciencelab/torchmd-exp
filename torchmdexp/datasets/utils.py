@@ -1,6 +1,5 @@
 import numpy as np
 
-
 CACB_MAP = { 
      ('ALA','CA'):'CA',
      ('ARG','CA'):'CA', 
@@ -69,6 +68,7 @@ CA_MAP = {
      ('VAL','CA'):'CAV'}
 
 
+
 def _pdb2psf_CA(mol, bonds=True, angles=True, dihedrals=True):
 
     n = mol.numAtoms
@@ -130,8 +130,9 @@ def _pdb2psf_CA(mol, bonds=True, angles=True, dihedrals=True):
     mol.bonds = all_bonds
     mol.angles = all_angles
     mol.dihedrals = all_dihedrals
-
+    
     return mol
+
 
 
 def _pdb2full_CA(mol):
