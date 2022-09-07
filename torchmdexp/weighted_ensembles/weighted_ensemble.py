@@ -190,7 +190,8 @@ class WeightedEnsemble:
             energy, forces = self.nnp(embeddings, pos, batch)
         else:
             energy, forces = nnp_prime(embeddings, pos, batch)
-
+        
+        #print('PREDICTED ENERGY: ', energy.item()) 
         #print('PREDICTED FORCES')
         #print(forces)
         
