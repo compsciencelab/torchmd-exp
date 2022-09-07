@@ -290,6 +290,7 @@ class TorchMD_Sampler(Sampler):
         
         self.sim_dict['names'] = self.names
         self.sim_dict['ground_truth'] = batch.get('observables')
+        self.sim_dict['mols'] = self.mols
         
     def _set_integrator(self, mols, mls):
         
