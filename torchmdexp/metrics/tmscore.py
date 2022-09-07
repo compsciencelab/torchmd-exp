@@ -1,7 +1,7 @@
 import torch 
 import numpy as np
 
-def tm_score(c1, c2):
+def tm_score(c1, c2, *args):
     
     def cubic_root(x):
         return abs(x)**(1/3)* (1,-1)[x<0] 

@@ -138,7 +138,7 @@ class WeightedEnsemble:
         
         return neff
     
-    def compute_we(self, states, ground_truth, embeddings, U_prior, nnp_prime, neff_threshold=None):
+    def compute_we(self, states, mols, ground_truth, embeddings, U_prior, nnp_prime, neff_threshold=None):
         
         weights, U_ext_hat = self._weights(states, embeddings, U_prior, nnp_prime)
 
@@ -147,16 +147,16 @@ class WeightedEnsemble:
         # Compute the weighted ensemble of the conformations 
         states = states.to(self.device)
         
-        obs = torch.tensor([self.metric(state, ground_truth) for state in states], device = self.device, dtype = self.precision)
+        obs = torch.tensor([self.metric(state, ground_truth, mols) for state in states], device = self.device, dtype = self.precision)
         avg_metric = torch.mean(obs).detach().item()
 
         w_ensemble = torch.multiply(weights, obs).sum(0) 
         
         return w_ensemble, avg_metric
     
-    def compute_loss(self, ground_truth, states, embeddings, U_prior, nnp_prime, x = None, y = None, energy_weight=1.0):
+    def compute_loss(self, ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None, energy_weight=1.0):
         
-        w_e, avg_metric = self.compute_we(states, ground_truth, embeddings, U_prior, nnp_prime)
+        w_e, avg_metric = self.compute_we(states, mols, ground_truth, embeddings, U_prior, nnp_prime)
         values_dict = {}
         if energy_weight == 0:
             loss = self.loss_fn(w_e)
@@ -200,11 +200,11 @@ class WeightedEnsemble:
         return l1_loss(y, forces)
         
     
-    def compute_gradients(self, names, ground_truth, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
+    def compute_gradients(self, names, mols, ground_truth, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
         
         if val == False:
             self.optimizer.zero_grad()
-            loss, values_dict = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime, x = x, y = y)
+            loss, values_dict = self.compute_loss(ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
 
@@ -219,7 +219,7 @@ class WeightedEnsemble:
                         grads.append(p.grad)
         elif val == True:
             with torch.no_grad():
-                loss = self.compute_loss(ground_truth, states, embeddings, U_prior, nnp_prime)
+                loss = self.compute_loss(ground_truth, mols, states, embeddings, U_prior, nnp_prime)
                     
         return grads, loss.item(), values_dict
         

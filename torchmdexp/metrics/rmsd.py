@@ -4,7 +4,7 @@ import numpy as np
 
 # RMSD between two sets of coordinates with shape (n_atoms, 3) using the Kabsch algorithm
 # Returns the RMSD and whether convergence was reached
-def rmsd(c1, c2):
+def rmsd(c1, c2, *args):
     device = c1.device
     
     # set device
