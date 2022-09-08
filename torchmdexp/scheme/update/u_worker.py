@@ -197,12 +197,14 @@ class Updater(Worker):
 
                     # Compute Train loss
                     if val == False: 
-                        grads, loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
+                        grads, loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val)
                         grads_to_average.append(grads)
                         train_losses.append(loss)
                     
                     if val == True:
-                        _ , loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime)
+                        print('VALIDATION', val)
+                        _ , loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val)
+                        print(loss)
                         val_losses.append(loss)
                     
                     # Save losses and Metric Values

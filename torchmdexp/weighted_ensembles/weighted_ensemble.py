@@ -194,13 +194,7 @@ class WeightedEnsemble:
         if nnp_prime == None:
             energy, forces = self.nnp(embeddings, pos, batch)
         else:
-            energy, forces = nnp_prime(embeddings, pos, batch)
-
-        #print('PREDICTED FORCES')
-        #print(forces)
-        
-        #print('FORCES')
-        #print(y)        
+            energy, forces = nnp_prime(embeddings, pos, batch)     
         
         return l1_loss(y, forces)
         
@@ -223,30 +217,31 @@ class WeightedEnsemble:
                     if p.grad is not None:
                         grads.append(p.grad)
         elif val == True:
-            with torch.no_grad():
-                loss = self.compute_loss(ground_truth, mols, states, embeddings, U_prior, nnp_prime)
-                    
+            grads = None
+            loss, values_dict = self.compute_loss(ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
+            loss = loss.detach()
+                
         return grads, loss.item(), values_dict
         
     
     def get_loss(self):
         return self.loss.detach().item()
     
-    def compute_val_loss(self, ground_truth, states, **kwargs):
-        
-        # Compute val loss
-        
-        n_states = 'last'
-        if n_states == 'last':
-            val_rmsd = self.val_fn(states[-1], ground_truth).item()
-        elif n_states == 'last10':
-            val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states[-10:]])
-        else:
-            val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states])   
-        
-        #self.init_coords = states[-1]
-        
-        return val_rmsd
+    #def compute_val_loss(self, ground_truth, states, **kwargs):
+    #    
+    #    # Compute val loss
+    #    
+    #    n_states = 'last'
+    #    if n_states == 'last':
+    #        val_rmsd = self.val_fn(states[-1], ground_truth).item()
+    #    elif n_states == 'last10':
+    #        val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states[-10:]])
+    #    else:
+    #        val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states])   
+    #    
+    #    #self.init_coords = states[-1]
+    #    
+    #    return val_rmsd
         
     def apply_gradients(self, gradients):
         
