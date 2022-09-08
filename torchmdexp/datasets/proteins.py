@@ -68,6 +68,12 @@ class ProteinDataset(Dataset):
         """ Returns dataset values of a given key. """
         return self.dataset[key]
     
+    def set_value(self, data_dict):
+        """ Sets a new value for the given dataset keys"""
+        
+        for k, v in data_dict.items():
+            self.dataset[k] = v
+    
     def get_keys(self):
         """ Returns the dataset keys as a list. """
         return list(self.dataset.keys())

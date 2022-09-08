@@ -20,6 +20,7 @@ class WeightedEnsemble:
         replicas = 1,
         device='cpu',
         precision = torch.double,
+        energy_weight = 0.0
      ):
         self.nstates = nstates
         self.metric = metric
@@ -30,6 +31,7 @@ class WeightedEnsemble:
         self.replicas = replicas
         self.device = device
         self.precision = precision
+        self.energy_weight = energy_weight
         
         # ------------------- Neural Network Potential and Optimizer -----------------
         self.nnp = nnp
@@ -52,7 +54,9 @@ class WeightedEnsemble:
                        max_grad_norm = 550,
                        T = 350,
                        replicas = 1,
-                       precision = torch.double):
+                       precision = torch.double,
+                       energy_weight = 0.0
+                      ):
         """
         Returns a function to create new WeightedEnsemble instances
         
@@ -87,7 +91,8 @@ class WeightedEnsemble:
                        T,
                        replicas,
                        device,
-                       precision
+                       precision,
+                       energy_weight
                       )
         return create_weighted_ensemble_instance
     
@@ -154,18 +159,18 @@ class WeightedEnsemble:
         
         return w_ensemble, avg_metric
     
-    def compute_loss(self, ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None, energy_weight=1.0):
+    def compute_loss(self, ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None):
         
         w_e, avg_metric = self.compute_we(states, mols, ground_truth, embeddings, U_prior, nnp_prime)
         values_dict = {}
-        if energy_weight == 0:
+        if self.energy_weight == 0.0:
             loss = self.loss_fn(w_e)
-            
+            we_loss = loss.detach()
         else:
             we_loss = self.loss_fn(w_e)
             energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime)
             
-            loss = we_loss + energy_weight * energy_loss
+            loss = we_loss + self.energy_weight * energy_loss
             values_dict['loss_2'] = energy_loss.item()
         
         values_dict['avg_metric'] = avg_metric

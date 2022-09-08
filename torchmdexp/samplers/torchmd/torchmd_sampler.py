@@ -24,7 +24,7 @@ class TorchMD_Sampler(Sampler):
         Contain the system to simulate. Can have more than one molecule
     nnp: LightningModule
         Neural Network Potential used to simulate the system
-    mls: list
+    lengths: list
         Contains the lengths of each molecule in the Moleculekit object
     focefield: str
         Directory of the forcefield file
@@ -58,7 +58,7 @@ class TorchMD_Sampler(Sampler):
     ------------
     precision: torch.precision
         'Floating point precision'
-    mls: list
+    lengths: list
         Contains the lengths of each molecule in the Moleculekit object
     sim_dict: dict
         Dict containing information about each state (coordinates) and prior Energy of each molecule simulated
@@ -71,9 +71,9 @@ class TorchMD_Sampler(Sampler):
                  mols,
                  nnp,
                  device,
-                 mls,
+                 lengths,
                  names,
-                 ground_truth,
+                 ground_truths,
                  forcefield, 
                  forceterms,
                  replicas, 
@@ -95,7 +95,7 @@ class TorchMD_Sampler(Sampler):
                 ):
         
         self.mols = mols
-        self.mls = mls
+        self.lengths = lengths
         self.names = names
         self.x = x
         self.y = y
@@ -123,7 +123,7 @@ class TorchMD_Sampler(Sampler):
         self.nnp = nnp
 
         # ------------------- Set the ground truth list (PDB coordinates) -----------
-        self.ground_truth = {name: ground_truth[idx] for idx, name in enumerate(names)}
+        self.ground_truths = {name: ground_truths[idx] for idx, name in enumerate(names)}
         self.init_coords = None
         
         # Create the dictionary used to return states and prior energies
@@ -187,13 +187,13 @@ class TorchMD_Sampler(Sampler):
             creates a new TorchMD_Sampler instance.
         """
 
-        def create_sampler_instance(mol, nnp, device, mls, names, ground_truth, x=None, y=None):
+        def create_sampler_instance(mol, nnp, device, lengths, names, ground_truths, x=None, y=None):
             return cls(mol,
                        nnp,
                        device,
-                       mls, # molecule lengths
+                       lengths, # molecule lengths
                        names,
-                       ground_truth,
+                       ground_truths,
                        forcefield, 
                        forceterms,
                        replicas, 
@@ -237,7 +237,7 @@ class TorchMD_Sampler(Sampler):
             
         # Iterator and start computing forces
         iterator = range(1,int(steps/output_period)+1)
-        integrator = self._set_integrator(self.mols, self.mls)
+        integrator = self._set_integrator(self.mols, self.lengths)
         
         # Define the states
         nstates = int(steps // output_period)
@@ -285,14 +285,14 @@ class TorchMD_Sampler(Sampler):
     def set_batch(self, batch):
         
         self.names = batch.get('names')
-        self.mls = batch.get('lengths')
+        self.lengths = batch.get('lengths')
         self.mols = batch.get('molecules')
         
         self.sim_dict['names'] = self.names
-        self.sim_dict['ground_truth'] = batch.get('observables')
+        self.sim_dict['ground_truth'] = batch.get('ground_truths')
         self.sim_dict['mols'] = self.mols
         
-    def _set_integrator(self, mols, mls):
+    def _set_integrator(self, mols, lengths):
         
         # Create simulation system
         mol = create_system(mols)
@@ -307,7 +307,7 @@ class TorchMD_Sampler(Sampler):
         # Add the embeddings to the sim_dict
         my_e = embeddings 
         self.sim_dict['embeddings'] = []
-        for idx, ml in enumerate(mls):
+        for idx, ml in enumerate(lengths):
             mol_embeddings, my_e = my_e[:, :ml], my_e[:, ml:]
             self.sim_dict['embeddings'].append(mol_embeddings.to('cpu'))     
 
@@ -341,7 +341,7 @@ class TorchMD_Sampler(Sampler):
         """
         Split the states tensor and adds the coordinates of each molecule to the sample_dict
         """
-        for idx, ml in enumerate(self.mls):
+        for idx, ml in enumerate(self.lengths):
             states_mol, states = states[:, :ml, :], states[:, ml:, :]
             sample_dict['states'].append(states_mol)
         return sample_dict
