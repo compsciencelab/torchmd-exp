@@ -131,7 +131,7 @@ def main():
         for i in range(0, train_set_size, sim_batch_size):
             batch = train_set[ i : sim_batch_size + i]
             learner.set_batch(batch)
-            learner.step(val=True)
+            learner.step()
 
         # Val step
         epoch += 1
