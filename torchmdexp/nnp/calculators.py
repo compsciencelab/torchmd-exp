@@ -1,8 +1,9 @@
 import torch
+from .models.model import load_model
 
 class External:
-    def __init__(self, model, embeddings, device="cpu"):
-        self.model = model
+    def __init__(self, model_file, embeddings, device="cpu"):
+        self.model = load_model(model_file, device=device, derivative=True)
         self.device = device
         self.n_atoms = embeddings.size(1)
         self.embeddings = embeddings.reshape(-1).to(device)
@@ -10,7 +11,7 @@ class External:
             embeddings.size(1)
         )
 
-        self.model.to(device)
+        #self.model.to(device)
         self.model.eval()
         
     def calculate(self, pos, box):
