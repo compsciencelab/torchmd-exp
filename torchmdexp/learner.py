@@ -16,7 +16,7 @@ class Learner:
         Directory for model checkpoints and the monitor.csv
     """
     
-    def __init__(self, scheme, steps, output_period, train_names = [] , log_dir=None, save_traj=False, keys=('train_loss', 'val_loss')):
+    def __init__(self, scheme, steps, output_period, train_names = [] , log_dir=None, keys=('train_loss', 'val_loss')):
         self.log_dir = log_dir
         self.update_worker = scheme.update_worker()
         
