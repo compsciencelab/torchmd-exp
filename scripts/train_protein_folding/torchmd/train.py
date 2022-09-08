@@ -53,7 +53,7 @@ def main():
     protein_factory = ProteinFactory()
     protein_factory.load_dataset(args.dataset)
     
-    train_set, val_set = protein_factory.train_val_split(val_size=0.0)
+    train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
     
     dataset_names = protein_factory.get_names()
     train_set_size = len(train_set)
@@ -131,7 +131,7 @@ def main():
         for i in range(0, train_set_size, sim_batch_size):
             batch = train_set[ i : sim_batch_size + i]
             learner.set_batch(batch)
-            learner.step()
+            learner.step(val=True)
 
         # Val step
         epoch += 1
@@ -220,6 +220,7 @@ def get_args(arguments=None):
     # dataset specific
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
     parser.add_argument('--dataset',  default=None, help='File with the dataset')
+    parser.add_argument('--val_size',  default=0.0,type=float, help='Proportion of the dataset that goes to validation.')
 
     # Torchmdexp specific
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
