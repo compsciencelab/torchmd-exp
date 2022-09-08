@@ -208,7 +208,8 @@ class Updater(Worker):
                     # Save losses and Metric Values
                     losses_dict[s] = values_dict['avg_metric']
                     losses_dict['loss_1'].append(values_dict['loss_1'])
-                    if values_dict['loss_2']:
+                    
+                    if 'loss_2' in values_dict:
                         losses_dict['loss_2'].append(values_dict['loss_2'])
                     
                     torch.cuda.empty_cache()
