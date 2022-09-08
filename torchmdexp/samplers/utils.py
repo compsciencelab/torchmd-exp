@@ -70,7 +70,6 @@ def moleculekit_system_factory(systems_dataset, num_workers):
     
     for i in range(num_workers):
         batch = systems_dataset[batch_size * i:batch_size * (i+1)]
-            
         systems.append(batch.get('molecules'))
 
         info = {}

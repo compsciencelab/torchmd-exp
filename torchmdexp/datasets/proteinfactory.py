@@ -63,13 +63,14 @@ class ProteinFactory:
         
         for idx, protein in enumerate(pdb_ids):
             
-            observable = os.path.join(data_dir, 'ground_truths' , protein + '.pdb')
+            ground_truth = os.path.join(data_dir, 'ground_truths' , protein + '.pdb')
+
             init_state = os.path.join(data_dir, 'molecules' , protein + '.xtc')
             coords = os.path.join(data_dir, 'x' , protein + '.npy')
             delta = os.path.join(data_dir, 'y' , protein + '.npy')
                  
-            if os.path.isfile(observable):
-                mol = Molecule(observable)    
+            if os.path.isfile(ground_truth):
+                mol = Molecule(ground_truth)    
                 native_mol = copy.deepcopy(mol) 
                 native_coords = get_native_coords(native_mol)
                 

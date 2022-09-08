@@ -125,8 +125,8 @@ class TorchMD_Sampler(Sampler):
 
         # ------------------- Set the ground truth list (PDB coordinates) -----------
         self.ground_truths = {name: ground_truths[idx] for idx, name in enumerate(names)}
-        
-        self.init_coords = None  # Set up in set_init_state()
+
+        self.init_coords = None
         
         # Create the dictionary used to return states and prior energies
         self.sim_dict = collections.defaultdict(dict)
@@ -190,6 +190,7 @@ class TorchMD_Sampler(Sampler):
         """
 
         def create_sampler_instance(mol, nnp, device, lengths, names, ground_truths, init_states=None, x=None, y=None):
+
             return cls(mol,
                        nnp,
                        device,

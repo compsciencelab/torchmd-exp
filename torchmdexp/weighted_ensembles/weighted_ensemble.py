@@ -20,6 +20,7 @@ class WeightedEnsemble:
         replicas = 1,
         device='cpu',
         precision = torch.double,
+        energy_weight = 0.0
      ):
         self.nstates = nstates
         self.metric = metric
@@ -30,6 +31,7 @@ class WeightedEnsemble:
         self.replicas = replicas
         self.device = device
         self.precision = precision
+        self.energy_weight = energy_weight
         
         # ------------------- Neural Network Potential and Optimizer -----------------
         self.nnp = nnp
@@ -52,7 +54,9 @@ class WeightedEnsemble:
                        max_grad_norm = 550,
                        T = 350,
                        replicas = 1,
-                       precision = torch.double):
+                       precision = torch.double,
+                       energy_weight = 0.0
+                      ):
         """
         Returns a function to create new WeightedEnsemble instances
         
@@ -87,7 +91,8 @@ class WeightedEnsemble:
                        T,
                        replicas,
                        device,
-                       precision
+                       precision,
+                       energy_weight
                       )
         return create_weighted_ensemble_instance
     
@@ -154,7 +159,8 @@ class WeightedEnsemble:
         
         return w_ensemble, avg_metric
     
-    def compute_loss(self, ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None, energy_weight=0):
+
+    def compute_loss(self, ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None):
         
         w_e, avg_metric = self.compute_we(states, mols, ground_truths, embeddings, U_prior, nnp_prime)
         values_dict = {}
@@ -163,10 +169,11 @@ class WeightedEnsemble:
         if energy_weight == 0:
             loss = we_loss
             values_dict['loss_2'] = None
+
         else:
             energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime)
             
-            loss = we_loss + energy_weight * energy_loss
+            loss = we_loss + self.energy_weight * energy_loss
             values_dict['loss_2'] = energy_loss.item()
         
         values_dict['avg_metric'] = avg_metric
@@ -190,13 +197,8 @@ class WeightedEnsemble:
         if nnp_prime == None:
             energy, forces = self.nnp(embeddings, pos, batch)
         else:
-            energy, forces = nnp_prime(embeddings, pos, batch)
+            energy, forces = nnp_prime(embeddings, pos, batch)     
 
-        #print('PREDICTED FORCES')
-        #print(forces)
-        
-        #print('FORCES')
-        #print(y)        
         
         return l1_loss(y, forces)
         
@@ -219,30 +221,31 @@ class WeightedEnsemble:
                     if p.grad is not None:
                         grads.append(p.grad)
         elif val == True:
-            with torch.no_grad():
-                loss = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime)
-                    
+            grads = None
+            loss, values_dict = self.compute_loss(ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
+            loss = loss.detach()
+                
         return grads, loss.item(), values_dict
         
     
     def get_loss(self):
         return self.loss.detach().item()
     
-    def compute_val_loss(self, ground_truths, states, **kwargs):
-        
-        # Compute val loss
-        
-        n_states = 'last'
-        if n_states == 'last':
-            val_rmsd = self.val_fn(states[-1], ground_truths).item()
-        elif n_states == 'last10':
-            val_rmsd = mean([self.val_fn(ground_truths, state).item() for state in states[-10:]])
-        else:
-            val_rmsd = mean([self.val_fn(ground_truths, state).item() for state in states])   
-        
-        #self.init_coords = states[-1]
-        
-        return val_rmsd
+    #def compute_val_loss(self, ground_truth, states, **kwargs):
+    #    
+    #    # Compute val loss
+    #    
+    #    n_states = 'last'
+    #    if n_states == 'last':
+    #        val_rmsd = self.val_fn(states[-1], ground_truth).item()
+    #    elif n_states == 'last10':
+    #        val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states[-10:]])
+    #    else:
+    #        val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states])   
+    #    
+    #    #self.init_coords = states[-1]
+    #    
+    #    return val_rmsd
         
     def apply_gradients(self, gradients):
         

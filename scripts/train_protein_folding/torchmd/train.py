@@ -53,7 +53,7 @@ def main():
     protein_factory = ProteinFactory()
     protein_factory.load_dataset(args.dataset)
     
-    train_set, val_set = protein_factory.train_val_split(val_size=0.0)
+    train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
     
     dataset_names = protein_factory.get_names()
     train_set_size = len(train_set)
@@ -75,7 +75,9 @@ def main():
     weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, metric = rmsd, loss_fn=loss,
                                                                 val_fn=rmsd,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
-                                                                replicas = args.replicas, precision = torch.double)
+                                                                replicas = args.replicas, precision = torch.double, 
+                                                                energy_weight = args.energy_weight
+                                                               )
 
 
     # 3. Define Scheme
@@ -113,7 +115,7 @@ def main():
 
 
     # 4. Define Learner
-    learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir, save_traj=args.save_traj,
+    learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir,
                       keys = ('epoch', 'level', 'steps', 'train_loss', 'val_loss', 'loss_1', 'loss_2'))    
 
     
@@ -218,6 +220,7 @@ def get_args(arguments=None):
     # dataset specific
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
     parser.add_argument('--dataset',  default=None, help='File with the dataset')
+    parser.add_argument('--val_size',  default=0.0,type=float, help='Proportion of the dataset that goes to validation.')
 
     # Torchmdexp specific
     parser.add_argument('--device', default='cpu', help='Type of device, e.g. "cuda:1"')
@@ -235,6 +238,7 @@ def get_args(arguments=None):
     parser.add_argument('--steps',type=int,default=400,help='Total number of simulation steps')
     parser.add_argument('--max_steps',type=int,default=400,help='Max Total number of simulation steps')
     parser.add_argument('--output-period',type=int,default=100,help='Pick one state every period')
+    parser.add_argument('--energy_weight',  default=0.0,type=float, help='Weight assigned to the deltaenergy regularizer loss')
 
     # other args
     parser.add_argument('--derivative', default=True, type=bool, help='If true, take the derivative of the prediction w.r.t coordinates')
@@ -246,7 +250,6 @@ def get_args(arguments=None):
     parser.add_argument('--standardize', type=bool, default=False, help='If true, multiply prediction by dataset std and add mean')
     parser.add_argument('--reduce-op', type=str, default='add', choices=['add', 'mean'], help='Reduce operation to apply to atomic predictions')
     parser.add_argument('--exclusions', default=('bonds', 'angles', '1-4'), type=tuple, help='exclusions for the LJ or repulsionCG term')
-    parser.add_argument('--save-traj', default=False, type=tuple, help='Save training states')
     
     args = parser.parse_args()
     os.makedirs(args.log_dir,exist_ok=True)
