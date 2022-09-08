@@ -27,15 +27,15 @@ class WeightedEnsembleWorker(Worker):
         # Print worker information
         self.print_worker_info()
                 
-    def compute_gradients(self, ground_truth, **sim_results):
+    def compute_gradients(self, ground_truths, **sim_results):
                 
-        return self.weighted_ensemble.compute_gradients(ground_truth=ground_truth, **sim_results)
+        return self.weighted_ensemble.compute_gradients(ground_truths=ground_truths, **sim_results)
     
     def get_loss(self):
         return self.weighted_ensemble.get_loss()
     
-    def compute_val_loss(self, ground_truth, **sim_results):
-        return self.weighted_ensemble.compute_val_loss(ground_truth, **sim_results)
+    def compute_val_loss(self, ground_truths, **sim_results):
+        return self.weighted_ensemble.compute_val_loss(ground_truths, **sim_results)
     
     def apply_gradients(self, gradients=None):
         
@@ -44,8 +44,8 @@ class WeightedEnsembleWorker(Worker):
     def set_lr(self, lr):
         self.weighted_ensemble.set_lr(lr)
     
-    def get_native_U(self, ground_truth, embeddings):
-        return self.weighted_ensemble.get_native_U(ground_truth, embeddings).item()
+    def get_native_U(self, ground_truths, embeddings):
+        return self.weighted_ensemble.get_native_U(ground_truths, embeddings).item()
     
     def get_init_state(self):
         return self.weighted_ensemble.get_init_state()

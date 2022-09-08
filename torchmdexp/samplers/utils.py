@@ -72,7 +72,11 @@ def moleculekit_system_factory(systems_dataset, num_workers):
         batch = systems_dataset[batch_size * i:batch_size * (i+1)]
             
         systems.append(batch.get('molecules'))
-        info = {'mls': batch.get('lengths'), 'ground_truth': batch.get('observables'), 'names': batch.get('names'), 'x': batch.get('x'), 'y': batch.get('y')}
+
+        info = {}
+        for key in batch.get_keys():
+            if key != 'molecules': info[key] = batch.get(key)
+
         worker_info.append(info)
         
     return systems, worker_info

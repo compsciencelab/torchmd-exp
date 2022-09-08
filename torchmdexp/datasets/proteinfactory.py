@@ -56,14 +56,14 @@ class ProteinFactory:
         
         dataset = {'names' : [],
                    'molecules': [],
-                   'observables': [],
+                   'ground_truths': [],
                    'lengths': [],
                    'x': [],
                    'y': []}
         
         for idx, protein in enumerate(pdb_ids):
             
-            observable = os.path.join(data_dir, 'observables' , protein + '.pdb')
+            observable = os.path.join(data_dir, 'ground_truths' , protein + '.pdb')
             init_state = os.path.join(data_dir, 'molecules' , protein + '.xtc')
             coords = os.path.join(data_dir, 'x' , protein + '.npy')
             delta = os.path.join(data_dir, 'y' , protein + '.npy')
@@ -99,7 +99,7 @@ class ProteinFactory:
             
             dataset['names'].append(protein)
             dataset['molecules'].append(mol)
-            dataset['observables'].append(native_coords)
+            dataset['ground_truths'].append(native_coords)
             dataset['lengths'].append(len(mol.coords))
             dataset['x'].append(x)
             dataset['y'].append(y)

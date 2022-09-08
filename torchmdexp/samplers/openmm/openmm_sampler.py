@@ -22,7 +22,7 @@ class OpenMM_Sampler(Sampler):
         Contain the system to simulate. Can have more than one molecule
     nnp: LightningModule
         Neural Network Potential used to simulate the system
-    mls: list
+    lengths: list
         Contains the lengths of each molecule in the Moleculekit object
     focefield: str
         Directory of the forcefield file
@@ -56,7 +56,7 @@ class OpenMM_Sampler(Sampler):
     ------------
     precision: torch.precision
         'Floating point precision'
-    mls: list
+    lengths: list
         Contains the lengths of each molecule in the Moleculekit object
     sim_dict: dict
         Dict containing information about each state (coordinates) and prior Energy of each molecule simulated
@@ -69,9 +69,9 @@ class OpenMM_Sampler(Sampler):
                  mols,
                  nnp,
                  device,
-                 mls,
+                 lengths,
                  names,
-                 ground_truth,
+                 ground_truths,
                  forcefield, 
                  forceterms,
                  cutoff, 
@@ -80,7 +80,7 @@ class OpenMM_Sampler(Sampler):
                  langevin_gamma=0.1 
                 ):
         
-        self.mls = mls
+        self.lengths = lengths
         self.names = names
         self.device = device
         self.forcefield = forcefield
@@ -117,7 +117,7 @@ class OpenMM_Sampler(Sampler):
         
 
         # ------------------- Set the ground truth list (PDB coordinates) -----------
-        self.ground_truth = {name: ground_truth[idx] for idx, name in enumerate(names)}
+        self.ground_truths = {name: ground_truths[idx] for idx, name in enumerate(names)}
         self.init_coords = None
         
         # Create the dictionary used to return states and prior energies
@@ -171,13 +171,13 @@ class OpenMM_Sampler(Sampler):
             creates a new TorchMD_Sampler instance.
         """
 
-        def create_sampler_instance(mol, nnp, device, mls, names, ground_truth):
+        def create_sampler_instance(mol, nnp, device, lengths, names, ground_truths):
             return cls(mol,
                        nnp,
                        device,
-                       mls, # molecule lengths
+                       lengths, # molecule lengths
                        names,
-                       ground_truth,
+                       ground_truths,
                        forcefield, 
                        forceterms,
                        cutoff, 
@@ -211,13 +211,13 @@ class OpenMM_Sampler(Sampler):
         self.nnp.load_state_dict(weights)
         self.nnp_op = self._wrap_nnp(self.nnp, self.elements)
     
-    def set_ground_truth(self, ground_truth):
+    def set_ground_truth(self, ground_truths):
         
-        self.names = [mol.viewname[:-4] for mol in ground_truth]
-        self.mls = [len(mol.resname) for mol in ground_truth]
-        gt_dict = {name: {'ground_truth': get_native_coords(ground_truth[idx])} for idx, name in enumerate(self.names)}
+        self.names = [mol.viewname[:-4] for mol in ground_truths]
+        self.lengths = [len(mol.resname) for mol in ground_truths]
+        gt_dict = {name: {'ground_truths': get_native_coords(ground_truths[idx])} for idx, name in enumerate(self.names)}
         self.sim_dict = gt_dict
-        self.mol = create_system(ground_truth)
+        self.mol = create_system(ground_truths)
     
     def set_init_state(self, init_states):
         """
