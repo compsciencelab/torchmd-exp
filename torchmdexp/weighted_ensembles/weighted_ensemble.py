@@ -222,7 +222,7 @@ class WeightedEnsemble:
                         grads.append(p.grad)
         elif val == True:
             grads = None
-            loss, values_dict = self.compute_loss(ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
+            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
             loss = loss.detach()
                 
         return grads, loss.item(), values_dict
@@ -231,17 +231,17 @@ class WeightedEnsemble:
     def get_loss(self):
         return self.loss.detach().item()
     
-    #def compute_val_loss(self, ground_truth, states, **kwargs):
+    #def compute_val_loss(self, ground_truths, states, **kwargs):
     #    
     #    # Compute val loss
     #    
     #    n_states = 'last'
     #    if n_states == 'last':
-    #        val_rmsd = self.val_fn(states[-1], ground_truth).item()
+    #        val_rmsd = self.val_fn(states[-1], ground_truths).item()
     #    elif n_states == 'last10':
-    #        val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states[-10:]])
+    #        val_rmsd = mean([self.val_fn(ground_truths, state).item() for state in states[-10:]])
     #    else:
-    #        val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states])   
+    #        val_rmsd = mean([self.val_fn(ground_truths, state).item() for state in states])   
     #    
     #    #self.init_coords = states[-1]
     #    
