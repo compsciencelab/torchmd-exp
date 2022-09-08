@@ -50,11 +50,11 @@ class FullPseudoFF():
             
             # BONDS        
             # Get real bonds
-            _pdb2psf_CA(mol, angles=False, dihedrals=False)
+            pdb2psf_CA(mol, angles=False, dihedrals=False)
             real_bonds = mol.bonds.tolist()
             
             # Get new topology with pseudobonds
-            _pdb2full_CA(mol)
+            pdb2full_CA(mol)
             
             # Create bonds and pseudobonds
             for b in mol.bonds.tolist():

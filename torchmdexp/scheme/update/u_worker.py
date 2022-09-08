@@ -193,7 +193,7 @@ class Updater(Worker):
 
                 # Mini-batch update
                 for idx, s in enumerate(batch_names):
-                    system_result = {key:sim_dict[key][idx] for key in sim_dict.keys()}
+                    system_result = {key:sim_dict[key][idx] if sim_dict[key] else None for key in sim_dict.keys()}
 
                     # Compute Train loss
                     if val == False: 

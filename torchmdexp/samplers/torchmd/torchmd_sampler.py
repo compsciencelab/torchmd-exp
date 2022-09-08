@@ -86,6 +86,7 @@ class TorchMD_Sampler(Sampler):
                  temperature=350,
                  langevin_temperature=350,
                  langevin_gamma=0.1,
+                 init_states = None,
                  x = None,
                  y = None,
                  ff_type='file',
@@ -124,6 +125,7 @@ class TorchMD_Sampler(Sampler):
 
         # ------------------- Set the ground truth list (PDB coordinates) -----------
         self.ground_truths = {name: ground_truths[idx] for idx, name in enumerate(names)}
+
         self.init_coords = None
         
         # Create the dictionary used to return states and prior energies
@@ -187,7 +189,8 @@ class TorchMD_Sampler(Sampler):
             creates a new TorchMD_Sampler instance.
         """
 
-        def create_sampler_instance(mol, nnp, device, lengths, names, ground_truths, x=None, y=None):
+        def create_sampler_instance(mol, nnp, device, lengths, names, ground_truths, init_states=None, x=None, y=None):
+
             return cls(mol,
                        nnp,
                        device,
@@ -206,6 +209,7 @@ class TorchMD_Sampler(Sampler):
                        temperature,
                        langevin_temperature,
                        langevin_gamma,
+                       init_states,
                        x,
                        y,
                        ff_type,
@@ -288,8 +292,13 @@ class TorchMD_Sampler(Sampler):
         self.lengths = batch.get('lengths')
         self.mols = batch.get('molecules')
         
+        if 'init_states' in batch.get_keys():
+            for mol, init_state in zip(self.mols, batch.get('init_states')):
+                mol.coords = init_state[:, :, None]
+            self.init_coords = self.set_init_state(self.mols)
+        
         self.sim_dict['names'] = self.names
-        self.sim_dict['ground_truth'] = batch.get('ground_truths')
+        self.sim_dict['ground_truths'] = batch.get('ground_truths')
         self.sim_dict['mols'] = self.mols
         
     def _set_integrator(self, mols, lengths):
@@ -299,7 +308,7 @@ class TorchMD_Sampler(Sampler):
         
         if self.init_coords is not None:
             mol.coords = self.init_coords
-                        
+        
         # Create embeddings and the external force
         embeddings = get_embeddings(mol, self.device, self.replicas)
         external = External(self.nnp, embeddings, device = self.device)

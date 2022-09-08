@@ -45,7 +45,10 @@ class ProteinDataset(Dataset):
         
         new_dataset = {key: self.dataset[key][index] for key in self.dataset.keys()}
         
-        index_list = list(range(index.stop)[index]) if index.stop is not None else [0]
+        try:
+            index_list = list(range(index.stop)[index]) if index.stop is not None else [0]
+        except AttributeError:
+            index_list = [0]
         
         first_idx = index_list[0]
         n_to_add = (index_list[-1] + 1) - self.size
