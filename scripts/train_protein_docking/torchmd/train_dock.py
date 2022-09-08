@@ -110,7 +110,7 @@ def main():
 
 
     # 4. Define Learner
-    learner = Learner(scheme, steps, output_period, train_names=train_names, log_dir=args.log_dir, save_traj=args.save_traj,
+    learner = Learner(scheme, steps, output_period, train_names=train_names, log_dir=args.log_dir,
                       keys = ('epoch', 'level', 'steps', 'train_loss', 'val_loss', 'loss_1', 'loss_2'))    
 
     
@@ -131,7 +131,8 @@ def main():
         
         # Update level
         train_set = levels_factory.level(level)
-        print(f"in level {level}, using: {train_set.get('names')}")
+        print(f"\nIn level {level}")
+        print(f"Using: {train_set.get('names')}")
             
         # Set sim batch size:
         while sim_batch_size > args.sim_batch_size:
@@ -144,15 +145,14 @@ def main():
             
             train_set.shuffle() # rdmize systems
             
-            print(f"level {level}, using: {train_set.get('names')}")
-            print(f"epoch {epoch}  epoch_level {epoch_level}.")
+            print(f"Epoch: {epoch}  |  Epoch_level: {epoch_level}  |  Lr_max: {not lr_warn}  |  Min Train Loss: {min_train_loss:.2f}", 
+                  end='\r', flush=True)
             for i in range(0, len(train_set.get('names')), sim_batch_size):
                 # Get batch
                 batch = train_set[i:sim_batch_size+i]
                 learner.set_batch(batch)
-                print(f"Current batch {batch.get('names')}")
                 learner.step()
-
+            
             # Val step
             #if len(val_set) > 0:
             #    val_set.shuffle()
@@ -194,9 +194,9 @@ def main():
             #     min_val_loss = args.max_val_loss
             
             # Check before level up. If last level -> Don't level up. Spend at least 10 epochs per level
-            if min_val_loss < args.thresh_lvlup and level + 1 < args.num_levels and epoch_level >= 10:
+            if min_train_loss < args.thresh_lvlup and level + 1 < args.num_levels and epoch_level >= 10:
                 
-                print(f'Leveling up to level {level+1} with training loss: {min_train_loss:.2f} < {args.thresh_lvlup}')
+                print(f'\nLeveling up to level {level+1} with training loss: {min_train_loss:.2f} < {args.thresh_lvlup}')
                 
                 lvl_up = True
                 learner.level_up()
@@ -279,6 +279,7 @@ def get_args(arguments=None):
     parser.add_argument('--steps',type=int,default=400,help='Total number of simulation steps')
     parser.add_argument('--max_steps',type=int,default=400,help='Max Total number of simulation steps')
     parser.add_argument('--output-period',type=int,default=100,help='Pick one state every period')
+    parser.add_argument('--energy_weight',  default=0.0,type=float, help='Weight assigned to the deltaenergy regularizer loss')
     parser.add_argument('--forcefield', default="/shared/carles/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
     parser.add_argument('--ff_type', type=str, choices=['file', 'full_pseudo_receptor'], default='file', help='Type of forcefield to use')
     parser.add_argument('--ff_pseudo_scale', type=float, default=1, help='Value that divides pseudobond strength')

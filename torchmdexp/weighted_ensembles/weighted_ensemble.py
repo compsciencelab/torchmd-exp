@@ -166,7 +166,7 @@ class WeightedEnsemble:
         values_dict = {}
         we_loss = self.loss_fn(w_e)
         
-        if energy_weight == 0:
+        if self.energy_weight == 0:
             loss = we_loss
             values_dict['loss_2'] = None
 

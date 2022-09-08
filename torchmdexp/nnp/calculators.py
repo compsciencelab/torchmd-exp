@@ -2,8 +2,8 @@ import torch
 from .models.model import load_model
 
 class External:
-    def __init__(self, model_file, embeddings, device="cpu"):
-        self.model = load_model(model_file, device=device, derivative=True)
+    def __init__(self, model, embeddings, device="cpu"):
+        self.model = load_model(model, device=device, derivative=True) if type(model) == str else model
         self.device = device
         self.n_atoms = embeddings.size(1)
         self.embeddings = embeddings.reshape(-1).to(device)

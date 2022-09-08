@@ -140,9 +140,9 @@ class Updater(Worker):
             info['val_loss'] = None
         elif len(val_losses) > 0:
             info['val_loss'] = mean(val_losses)
-        
+
         losses_dict['loss_1'] = mean(losses_dict['loss_1'])
-        losses_dict['loss_2'] = mean(losses_dict['loss_2']) if len(losses_dict['loss_2']) > 0 else None
+        losses_dict['loss_2'] = mean(losses_dict['loss_2']) if losses_dict['loss_2'][0] else None
         
         info.update(losses_dict)
         
