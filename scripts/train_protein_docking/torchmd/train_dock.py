@@ -63,7 +63,8 @@ def main():
                                                              switch_dist=args.switch_dist, 
                                                              exclusions=args.exclusions, timestep=args.timestep,precision=torch.double, 
                                                              temperature=args.temperature, langevin_temperature=args.langevin_temperature,
-                                                             langevin_gamma=args.langevin_gamma
+                                                             langevin_gamma=args.langevin_gamma,
+                                                             multichain_emb=args.multichain_emb
                                                             )
     
     
@@ -286,6 +287,7 @@ def get_args(arguments=None):
     parser.add_argument('--ff_full_scale', type=float, default=1, help='Value that divides all bonds strength')
     parser.add_argument('--ff_save', type=str, default=None, help='Where to save the forcefield if required')
     parser.add_argument('--forceterms', nargs='+', default=[], help='Forceterms to include, e.g. --forceterms Bonds LJ')
+    parser.add_argument('--multichain_emb', type=bool, default=False, help='Determines whether to use unique embeddings for the ligand or not')
     # other args
     parser.add_argument('--derivative', default=True, type=bool, help='If true, take the derivative of the prediction w.r.t coordinates')
     parser.add_argument('--cutoff-lower', type=float, default=0.0, help='Lower cutoff in model')

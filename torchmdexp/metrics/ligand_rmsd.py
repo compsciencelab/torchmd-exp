@@ -1,5 +1,5 @@
 import torch
-from torchmdexp.samplers.utils import get_chains
+from torchmdexp.datasets.utils import get_chains
 from moleculekit.projections.metricrmsd import MetricRmsd
 
 def ligand_rmsd(c1, c2, mol, *args):

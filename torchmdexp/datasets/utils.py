@@ -1,4 +1,5 @@
 import numpy as np
+from collections import Counter
 
 CACB_MAP = { 
      ('ALA','CA'):'CA',
@@ -168,3 +169,19 @@ def pdb2full_CA(mol):
     mol.bonds = all_bonds
     mol.atomtype = np.array(atom_types)
     return all_bonds
+
+
+def get_chains(mol, full=True):
+    """Returns the names of the chains of a system with two chains.
+
+    Args:
+        full (bool, optional): Return the chain name as <X> or as <chain X>. Defaults to False.
+    """
+    chains = set(mol.chain)
+    assert len(chains) == 2, 'There should only be two chains per system'
+    receptor_chain = Counter(mol.chain).most_common(1)[0][0]
+    ligand_chain = [ch for ch in chains if ch not in [receptor_chain]][0]
+    if full:
+        return [f'chain {ch}' for ch in (receptor_chain, ligand_chain)]
+    else:
+        return receptor_chain, ligand_chain

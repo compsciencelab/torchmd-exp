@@ -92,7 +92,8 @@ class TorchMD_Sampler(Sampler):
                  ff_type='file',
                  ff_pseudo_scale=1,
                  ff_full_scale=1,
-                 ff_save=None
+                 ff_save=None,
+                 multichain_emb=False
                 ):
         
         self.mols = mols
@@ -108,6 +109,7 @@ class TorchMD_Sampler(Sampler):
         self.ff_pseudo_scale = ff_pseudo_scale
         self.ff_full_scale = ff_full_scale
         self.ff_save = ff_save
+        self.multichain_emb = multichain_emb
         self.cutoff = cutoff
         self.rfa = rfa
         self.switch_dist = switch_dist
@@ -149,7 +151,8 @@ class TorchMD_Sampler(Sampler):
                        ff_type='file',
                        ff_pseudo_scale=1,
                        ff_full_scale=1,
-                       ff_save=None):
+                       ff_save=None,
+                       multichain_emb=False):
         """ 
         Returns a function to create new TorchMD_Sampler instances.
         
@@ -215,7 +218,8 @@ class TorchMD_Sampler(Sampler):
                        ff_type,
                        ff_pseudo_scale,
                        ff_full_scale,
-                       ff_save)
+                       ff_save,
+                       multichain_emb)
         
         return create_sampler_instance
 
@@ -310,7 +314,7 @@ class TorchMD_Sampler(Sampler):
             mol.coords = self.init_coords
         
         # Create embeddings and the external force
-        embeddings = get_embeddings(mol, self.device, self.replicas)
+        embeddings = get_embeddings(mol, self.device, self.replicas, self.multichain_emb)
         external = External(self.nnp, embeddings, device = self.device)
         
         # Add the embeddings to the sim_dict
