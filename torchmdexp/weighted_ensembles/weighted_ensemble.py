@@ -168,17 +168,18 @@ class WeightedEnsemble:
             we_loss = loss.detach()
         else:
             we_loss = self.loss_fn(w_e)
-            energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime)
+            N = embeddings.shape[1]
+            energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime, N)
             
             loss = we_loss + self.energy_weight * energy_loss
             values_dict['loss_2'] = energy_loss.item()
-        
+            
         values_dict['avg_metric'] = avg_metric
         values_dict['loss_1'] = we_loss.item()        
         
         return loss, values_dict
         
-    def compute_energy_loss(self, x, y, embeddings, nnp_prime):
+    def compute_energy_loss(self, x, y, embeddings, nnp_prime, N):
         
         # Send y to device
         y = y.to(self.device)
@@ -190,13 +191,13 @@ class WeightedEnsemble:
             embeddings.size(1)
         )
         embeddings = embeddings.reshape(-1).to(self.device)
-        
+                
         if nnp_prime == None:
             energy, forces = self.nnp(embeddings, pos, batch)
         else:
             energy, forces = nnp_prime(embeddings, pos, batch)     
         
-        return l1_loss(y, forces)
+        return l1_loss(y, forces)/(3*N)
         
     
     def compute_gradients(self, names, mols, ground_truth, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
@@ -226,22 +227,7 @@ class WeightedEnsemble:
     
     def get_loss(self):
         return self.loss.detach().item()
-    
-    #def compute_val_loss(self, ground_truth, states, **kwargs):
-    #    
-    #    # Compute val loss
-    #    
-    #    n_states = 'last'
-    #    if n_states == 'last':
-    #        val_rmsd = self.val_fn(states[-1], ground_truth).item()
-    #    elif n_states == 'last10':
-    #        val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states[-10:]])
-    #    else:
-    #        val_rmsd = mean([self.val_fn(ground_truth, state).item() for state in states])   
-    #    
-    #    #self.init_coords = states[-1]
-    #    
-    #    return val_rmsd
+
         
     def apply_gradients(self, gradients):
         

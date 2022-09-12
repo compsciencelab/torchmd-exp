@@ -117,8 +117,6 @@ class TorchMD_Sampler(Sampler):
         self.langevin_temperature = langevin_temperature
         self.temperature = temperature
         
-        
-        
         # ------------------- Neural Network Potential -----------------------------
         self.nnp = nnp
 
@@ -236,7 +234,7 @@ class TorchMD_Sampler(Sampler):
         """
             
         # Iterator and start computing forces
-        iterator = range(1,int(steps/output_period)+1)
+        iterator = range(1,int(steps/output_period)+1)            
         integrator = self._set_integrator(self.mols, self.lengths)
         
         # Define the states
@@ -257,7 +255,7 @@ class TorchMD_Sampler(Sampler):
         for i in iterator:
             Ekin, Epot, T = integrator.step(niter=output_period)
             states[i-1] = integrator.systems.pos.to("cpu")
-                            
+        
         sample_dict = self._split_states(states, sample_dict)          
         self.sim_dict.update(sample_dict)
         return self.sim_dict
@@ -287,6 +285,10 @@ class TorchMD_Sampler(Sampler):
         self.names = batch.get('names')
         self.lengths = batch.get('lengths')
         self.mols = batch.get('molecules')
+        
+        if (self.x and self.y) is not None:
+            self.x = batch.get('x')
+            self.y = batch.get('y')
         
         self.sim_dict['names'] = self.names
         self.sim_dict['ground_truth'] = batch.get('ground_truths')
