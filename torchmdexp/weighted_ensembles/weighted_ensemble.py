@@ -196,6 +196,7 @@ class WeightedEnsemble:
             energy, forces = self.nnp(embeddings, pos, batch)
         else:
             energy, forces = nnp_prime(embeddings, pos, batch)     
+
         
         return l1_loss(y, forces)/(3*N)
         
