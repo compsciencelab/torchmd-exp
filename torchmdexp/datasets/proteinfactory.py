@@ -64,6 +64,7 @@ class ProteinFactory:
         for idx, protein in enumerate(pdb_ids):
             
             ground_truth = os.path.join(data_dir, 'ground_truths' , protein + '.pdb')
+
             init_state = os.path.join(data_dir, 'molecules' , protein + '.xtc')
             coords = os.path.join(data_dir, 'x' , protein + '.npy')
             delta = os.path.join(data_dir, 'y' , protein + '.npy')

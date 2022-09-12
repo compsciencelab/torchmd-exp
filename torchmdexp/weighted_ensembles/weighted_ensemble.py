@@ -143,7 +143,7 @@ class WeightedEnsemble:
         
         return neff
     
-    def compute_we(self, states, mols, ground_truth, embeddings, U_prior, nnp_prime, neff_threshold=None):
+    def compute_we(self, states, mols, ground_truths, embeddings, U_prior, nnp_prime, neff_threshold=None):
         
         weights, U_ext_hat = self._weights(states, embeddings, U_prior, nnp_prime)
 
@@ -152,20 +152,24 @@ class WeightedEnsemble:
         # Compute the weighted ensemble of the conformations 
         states = states.to(self.device)
         
-        obs = torch.tensor([self.metric(state, ground_truth, mols) for state in states], device = self.device, dtype = self.precision)
+        obs = torch.tensor([self.metric(state, ground_truths, mols) for state in states], device = self.device, dtype = self.precision)
         avg_metric = torch.mean(obs).detach().item()
 
         w_ensemble = torch.multiply(weights, obs).sum(0) 
         
         return w_ensemble, avg_metric
     
-    def compute_loss(self, ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None):
+
+    def compute_loss(self, ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None):
         
-        w_e, avg_metric = self.compute_we(states, mols, ground_truth, embeddings, U_prior, nnp_prime)
+        w_e, avg_metric = self.compute_we(states, mols, ground_truths, embeddings, U_prior, nnp_prime)
         values_dict = {}
-        if self.energy_weight == 0.0:
-            loss = self.loss_fn(w_e)
-            we_loss = loss.detach()
+        we_loss = self.loss_fn(w_e)
+        
+        if self.energy_weight == 0:
+            loss = we_loss
+            values_dict['loss_2'] = None
+
         else:
             we_loss = self.loss_fn(w_e)
             N = embeddings.shape[1]
@@ -175,7 +179,7 @@ class WeightedEnsemble:
             values_dict['loss_2'] = energy_loss.item()
             
         values_dict['avg_metric'] = avg_metric
-        values_dict['loss_1'] = we_loss.item()        
+        values_dict['loss_1'] = loss.item()
         
         return loss, values_dict
         
@@ -201,11 +205,11 @@ class WeightedEnsemble:
         return l1_loss(y, forces)/(3*N)
         
     
-    def compute_gradients(self, names, mols, ground_truth, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
+    def compute_gradients(self, names, mols, ground_truths, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
         
         if val == False:
             self.optimizer.zero_grad()
-            loss, values_dict = self.compute_loss(ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
+            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
 
@@ -220,7 +224,7 @@ class WeightedEnsemble:
                         grads.append(p.grad)
         elif val == True:
             grads = None
-            loss, values_dict = self.compute_loss(ground_truth, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
+            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
             loss = loss.detach()
                 
         return grads, loss.item(), values_dict
@@ -228,7 +232,6 @@ class WeightedEnsemble:
     
     def get_loss(self):
         return self.loss.detach().item()
-
         
     def apply_gradients(self, gradients):
         
@@ -243,9 +246,9 @@ class WeightedEnsemble:
         for g in self.optimizer.param_groups:
             g['lr'] = lr
     
-    def get_native_U(self, ground_truth, embeddings):
-        ground_truth = ground_truth.unsqueeze(0)
-        return self._extEpot(ground_truth, embeddings, mode='val')
+    def get_native_U(self, ground_truths, embeddings):
+        ground_truths = ground_truths.unsqueeze(0)
+        return self._extEpot(ground_truths, embeddings, mode='val')
     
     def get_init_state(self):
         return self.init_coords

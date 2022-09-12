@@ -14,6 +14,9 @@ class NNP(nn.Module):
             self.model = load_model(self.hparams.load_model, args=self.hparams)
         else:
             self.model = create_model(self.hparams, mean, std)
+        
+        if 'device' in self.hparams.keys():
+            self.model.to(self.hparams['device'])
 
     def forward(self, z, pos, batch=None, q=None, s=None):
         return self.model(z, pos, batch=batch, q=q, s=s)

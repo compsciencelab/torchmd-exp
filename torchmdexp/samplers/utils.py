@@ -1,8 +1,7 @@
 import numpy as np
 import torch
 import copy
-from collections import Counter
-
+from ..datasets.utils import get_chains
 
 def get_embeddings(mol, device, replicas, multi_chain=False):
     """ 
@@ -21,29 +20,13 @@ def get_embeddings(mol, device, replicas, multi_chain=False):
     if not multi_chain:
         emb = np.array([AA2INT[x] for x in mol.resname if x != 'MAG'])    
     
-    # Same as without multichain but add 20 to ligand chain to get different embeddings
+    # Same as without multichain but add 22 to ligand chain to get different embeddings
     else:
         receptor_chain, ligand_chain = get_chains(mol, full=False)
         emb = np.array([AA2INT[x] if (x != 'MAG' and ch == receptor_chain) \
-            else AA2INT[x] + 20 for x, ch in zip(mol.resname, mol.chain)])
+            else AA2INT[x] + 22 for x, ch in zip(mol.resname, mol.chain)])
     emb = torch.tensor(emb, device = device).repeat(replicas, 1)
     return emb
-
-def get_chains(mol, full=True):
-    # TODO: Once we update datasets, a function like this could be included in the ProteinFactory or utils there
-    """Returns the names of the chains of a system with two chains.
-
-    Args:
-        full (bool, optional): Return the chain name as <X> or as <chain X>. Defaults to False.
-    """
-    chains = set(mol.chain)
-    assert len(chains) == 2, 'There should only be two chains per system'
-    receptor_chain = Counter(mol.chain).most_common(1)[0][0]
-    ligand_chain = [ch for ch in chains if ch not in [receptor_chain]][0]
-    if full:
-        return [f'chain {ch}' for ch in (receptor_chain, ligand_chain)]
-    else:
-        return receptor_chain, ligand_chain
     
 def get_native_coords(mol, device='cpu'):
     """
@@ -71,13 +54,11 @@ def moleculekit_system_factory(systems_dataset, num_workers):
     for i in range(num_workers):
         batch = systems_dataset[batch_size * i:batch_size * (i+1)]
         systems.append(batch.get('molecules'))
-        
+
         info = {}
         for key in batch.get_keys():
             if key != 'molecules': info[key] = batch.get(key)
-        
-        #info = {'mls': batch.get('lengths'), 'ground_truth': batch.get('observables'), 'names': batch.get('names'), 'x': batch.get('x'), 'y': batch.get('y')}
-        
+
         worker_info.append(info)
         
     return systems, worker_info

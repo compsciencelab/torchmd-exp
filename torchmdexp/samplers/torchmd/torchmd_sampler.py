@@ -86,12 +86,14 @@ class TorchMD_Sampler(Sampler):
                  temperature=350,
                  langevin_temperature=350,
                  langevin_gamma=0.1,
+                 init_states = None,
                  x = None,
                  y = None,
                  ff_type='file',
                  ff_pseudo_scale=1,
                  ff_full_scale=1,
-                 ff_save=None
+                 ff_save=None,
+                 multichain_emb=False
                 ):
         
         self.mols = mols
@@ -107,6 +109,7 @@ class TorchMD_Sampler(Sampler):
         self.ff_pseudo_scale = ff_pseudo_scale
         self.ff_full_scale = ff_full_scale
         self.ff_save = ff_save
+        self.multichain_emb = multichain_emb
         self.cutoff = cutoff
         self.rfa = rfa
         self.switch_dist = switch_dist
@@ -122,6 +125,7 @@ class TorchMD_Sampler(Sampler):
 
         # ------------------- Set the ground truth list (PDB coordinates) -----------
         self.ground_truths = {name: ground_truths[idx] for idx, name in enumerate(names)}
+
         self.init_coords = None
         
         # Create the dictionary used to return states and prior energies
@@ -145,7 +149,8 @@ class TorchMD_Sampler(Sampler):
                        ff_type='file',
                        ff_pseudo_scale=1,
                        ff_full_scale=1,
-                       ff_save=None):
+                       ff_save=None,
+                       multichain_emb=False):
         """ 
         Returns a function to create new TorchMD_Sampler instances.
         
@@ -185,7 +190,8 @@ class TorchMD_Sampler(Sampler):
             creates a new TorchMD_Sampler instance.
         """
 
-        def create_sampler_instance(mol, nnp, device, lengths, names, ground_truths, x=None, y=None):
+        def create_sampler_instance(mol, nnp, device, lengths, names, ground_truths, init_states=None, x=None, y=None):
+
             return cls(mol,
                        nnp,
                        device,
@@ -204,12 +210,14 @@ class TorchMD_Sampler(Sampler):
                        temperature,
                        langevin_temperature,
                        langevin_gamma,
+                       init_states,
                        x,
                        y,
                        ff_type,
                        ff_pseudo_scale,
                        ff_full_scale,
-                       ff_save)
+                       ff_save,
+                       multichain_emb)
         
         return create_sampler_instance
 
@@ -289,9 +297,13 @@ class TorchMD_Sampler(Sampler):
         if (self.x and self.y) is not None:
             self.x = batch.get('x')
             self.y = batch.get('y')
+        if 'init_states' in batch.get_keys():
+            for mol, init_state in zip(self.mols, batch.get('init_states')):
+                mol.coords = init_state[:, :, None]
+            self.init_coords = self.set_init_state(self.mols)
         
         self.sim_dict['names'] = self.names
-        self.sim_dict['ground_truth'] = batch.get('ground_truths')
+        self.sim_dict['ground_truths'] = batch.get('ground_truths')
         self.sim_dict['mols'] = self.mols
         
     def _set_integrator(self, mols, lengths):
@@ -301,9 +313,9 @@ class TorchMD_Sampler(Sampler):
         
         if self.init_coords is not None:
             mol.coords = self.init_coords
-                        
+        
         # Create embeddings and the external force
-        embeddings = get_embeddings(mol, self.device, self.replicas)
+        embeddings = get_embeddings(mol, self.device, self.replicas, self.multichain_emb)
         external = External(self.nnp, embeddings, device = self.device)
         
         # Add the embeddings to the sim_dict
