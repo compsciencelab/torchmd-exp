@@ -183,7 +183,6 @@ def main():
                 lr *= args.lr_decay
                 lr = args.min_lr if lr < args.min_lr else lr
                 if lr == args.min_lr and lr_warn: 
-                    print('Learning rate at minimum value.')
                     lr_warn = False
                 learner.set_lr(lr)
 
