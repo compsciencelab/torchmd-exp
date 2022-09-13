@@ -171,15 +171,15 @@ class WeightedEnsemble:
             values_dict['loss_2'] = None
 
         else:
-            we_loss = self.loss_fn(w_e)
             N = embeddings.shape[1]
-            energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime, N)
-            
+            energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime, N)  
             loss = we_loss + self.energy_weight * energy_loss
+
+            
             values_dict['loss_2'] = energy_loss.item()
             
         values_dict['avg_metric'] = avg_metric
-        values_dict['loss_1'] = loss.item()
+        values_dict['loss_1'] = we_loss.item()
         
         return loss, values_dict
         
