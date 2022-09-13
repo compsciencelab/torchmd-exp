@@ -126,7 +126,7 @@ def main():
     while stop == False:
 
         train_set.shuffle()
-        
+                
         # Train step
         for i in range(0, train_set_size, sim_batch_size):
             batch = train_set[ i : sim_batch_size + i]

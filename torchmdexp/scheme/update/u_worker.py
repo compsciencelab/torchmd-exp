@@ -215,7 +215,7 @@ class Updater(Worker):
                         losses_dict['loss_2'].append(values_dict['loss_2'])
                     
                     torch.cuda.empty_cache()
-                
+
                 # Optim step
                 if len(grads_to_average) > 0:
                     grads_to_average = average_gradients(grads_to_average)
