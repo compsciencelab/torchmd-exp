@@ -138,9 +138,6 @@ def main():
             epoch_level += 1
             
             train_set.shuffle() # rdmize systems
-            
-            print(f"Epoch: {epoch}  |  Epoch_level: {epoch_level}  |  Lr_max: {not lr_warn}  |  Min Train Loss: {min_train_loss:.2f}", 
-                  end='\r', flush=True)
             for i in range(0, len(train_set.get('names')), sim_batch_size):
                 # Get batch
                 batch = train_set[i:sim_batch_size+i]
@@ -165,6 +162,9 @@ def main():
             learner.compute_epoch_stats()
             learner.write_row()
             train_loss = learner.get_train_loss()
+
+            print(f"Epoch: {epoch}  |  Epoch_level: {epoch_level}  |  Lr_max: {not lr_warn}  |  Train Loss (Min): {train_loss:.2f} ({min_train_loss:.2f})    ", 
+                  end='\r', flush=True)
 
             # Save
             if train_loss < args.max_loss and train_loss < min_train_loss:
