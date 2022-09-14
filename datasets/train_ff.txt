@@ -1,0 +1,12 @@
+a3d_ca
+bba_ca
+bbl_ca
+cln_ca
+homeodomain_ca
+lambda_ca
+ntl9_ca
+proteinb_ca
+proteing_ca
+trp_ca
+villin_ca
+ww_ca

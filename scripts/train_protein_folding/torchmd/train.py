@@ -71,7 +71,7 @@ def main():
     
     
     # 2. Define the Weighted Ensemble that computes the ensemble of states   
-    loss = Losses(0.0, fn_name='margin_ranking', margin=0.0, y=1.0)
+    loss = Losses(0.0, fn_name=args.loss_fn, margin=args.margin, y=1.0)
     weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, metric = rmsd, loss_fn=loss,
                                                                 val_fn=rmsd,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
@@ -250,6 +250,10 @@ def get_args(arguments=None):
     parser.add_argument('--standardize', type=bool, default=False, help='If true, multiply prediction by dataset std and add mean')
     parser.add_argument('--reduce-op', type=str, default='add', choices=['add', 'mean'], help='Reduce operation to apply to atomic predictions')
     parser.add_argument('--exclusions', default=('bonds', 'angles', '1-4'), type=tuple, help='exclusions for the LJ or repulsionCG term')
+    parser.add_argument('--loss_fn', type=str, default='margin_ranking', help='Type of loss fn')
+    parser.add_argument('--margin', type=float, default=1.0, help='Margin for margin ranking losss')
+   
+
     
     args = parser.parse_args()
     os.makedirs(args.log_dir,exist_ok=True)
