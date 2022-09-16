@@ -52,7 +52,7 @@ class UWorker(Worker):
         """
         Makes a simulation and computes the weighted ensemble.
         """
-        info = self.updater.step(steps, output_period, val)
+        info = self.updater.step(steps, output_period, val)        
         return info
     
     def set_init_state(self, init_state):
@@ -119,13 +119,23 @@ class Updater(Worker):
     def step(self, steps, output_period, val=False):
         
         info = {}
+        if val == False:
+            losses_dict = {'loss_1': [], 
+                           'loss_2': [],
+                           'val_loss_1': None,
+                           'val_loss_2': None
+                            }
+        else:
+            losses_dict = {'val_loss_1': [],
+                           'val_loss_2': []
+                          }
         
         # Simulation step
         sim_dict, sys_names, nnp_prime = self.sim_step(steps, output_period)
         torch.cuda.empty_cache() 
         
         # Reweighting step
-        train_losses, val_losses, losses_dict = self.reweight_step(sim_dict, sys_names, nnp_prime, val=val)
+        train_losses, val_losses, losses_dict = self.reweight_step(sim_dict, losses_dict, sys_names, nnp_prime, val=val)
 
         # Set weights
         weights = self.local_we_worker.get_weights()
@@ -140,10 +150,15 @@ class Updater(Worker):
             info['val_loss'] = None
         elif len(val_losses) > 0:
             info['val_loss'] = mean(val_losses)
-
-        losses_dict['loss_1'] = mean(losses_dict['loss_1'])
-        losses_dict['loss_2'] = mean(losses_dict['loss_2']) if losses_dict['loss_2'][0] else None
         
+        if val == False:
+            losses_dict['loss_1'] = mean(losses_dict['loss_1'])
+            losses_dict['loss_2'] = mean(losses_dict['loss_2']) if losses_dict['loss_2'][0] else None
+        
+        if val == True:
+            losses_dict['val_loss_1'] = mean(losses_dict['val_loss_1'])
+            losses_dict['val_loss_2'] = mean(losses_dict['val_loss_2']) if losses_dict['val_loss_2'][0] else None
+            
         info.update(losses_dict)
         
         return info
@@ -167,12 +182,10 @@ class Updater(Worker):
                 
         return sim_dict, sys_names, nnp_prime
 
-    def reweight_step(self, sim_dict, sys_names, nnp_prime, train_losses = [], val_losses = [], metric_dict = {}, val=False):
+    def reweight_step(self, sim_dict, losses_dict, sys_names, nnp_prime, val=False):
         
         train_losses = []
         val_losses = []
-        losses_dict = {'loss_1': [],
-                       'loss_2': []}
         
         if self.reweighting_execution == "centralised":
             num_systems = len(sys_names)
@@ -202,20 +215,23 @@ class Updater(Worker):
                         train_losses.append(loss)
                     
                     if val == True:
-                        print('VALIDATION', val)
                         _ , loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val)
-                        print(loss)
                         val_losses.append(loss)
                     
                     # Save losses and Metric Values
                     losses_dict[s] = values_dict['avg_metric']
-                    losses_dict['loss_1'].append(values_dict['loss_1'])
                     
-                    if 'loss_2' in values_dict:
-                        losses_dict['loss_2'].append(values_dict['loss_2'])
+                    if val == False:
+                        losses_dict['loss_1'].append(values_dict['loss_1'])
+                        if 'loss_2' in values_dict:
+                            losses_dict['loss_2'].append(values_dict['loss_2'])
+                    else:
+                        losses_dict['val_loss_1'].append(values_dict['val_loss_1'])
+                        if 'val_loss_2' in values_dict:
+                            losses_dict['val_loss_2'].append(values_dict['val_loss_2'])
                     
                     torch.cuda.empty_cache()
-
+                
                 # Optim step
                 if len(grads_to_average) > 0:
                     grads_to_average = average_gradients(grads_to_average)

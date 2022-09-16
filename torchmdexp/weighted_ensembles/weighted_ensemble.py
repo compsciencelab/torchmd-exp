@@ -160,26 +160,41 @@ class WeightedEnsemble:
         return w_ensemble, avg_metric
     
 
-    def compute_loss(self, ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None):
+    def compute_loss(self, ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None, val=False):
         
         w_e, avg_metric = self.compute_we(states, mols, ground_truths, embeddings, U_prior, nnp_prime)
         values_dict = {}
         we_loss = self.loss_fn(w_e)
         
-        if self.energy_weight == 0:
-            loss = we_loss
-            values_dict['loss_2'] = None
+        if val == False:
+        
+            if self.energy_weight == 0:
+                loss = we_loss
+                values_dict['loss_2'] = None
 
+            else:
+                N = embeddings.shape[1]
+                energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime, N)  
+                loss = we_loss + self.energy_weight * energy_loss
+                values_dict['loss_2'] = energy_loss.item()
+            
+            values_dict['loss_1'] = we_loss.item()
+            
+            
         else:
-            N = embeddings.shape[1]
-            energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime, N)  
-            loss = we_loss + self.energy_weight * energy_loss
-
+            if x is None:
+                loss = we_loss
+                values_dict['val_loss_2'] = None
+                
+            else:
+                N = embeddings.shape[1]
+                energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime, N)  
+                loss = we_loss + energy_loss
+                values_dict['val_loss_2'] = energy_loss.item()
             
-            values_dict['loss_2'] = energy_loss.item()
-            
+            values_dict['val_loss_1'] = we_loss.item()
+        
         values_dict['avg_metric'] = avg_metric
-        values_dict['loss_1'] = we_loss.item()
         
         return loss, values_dict
         
@@ -206,10 +221,10 @@ class WeightedEnsemble:
         
     
     def compute_gradients(self, names, mols, ground_truths, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
-        
+        self.optimizer.zero_grad()
         if val == False:
-            self.optimizer.zero_grad()
-            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
+            
+            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
 
@@ -224,7 +239,7 @@ class WeightedEnsemble:
                         grads.append(p.grad)
         elif val == True:
             grads = None
-            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y)
+            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
             loss = loss.detach()
                 
         return grads, loss.item(), values_dict
