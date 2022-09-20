@@ -59,7 +59,8 @@ class ProteinDataset(Dataset):
             
             rdm_idx = random.choices(range(n_to_sample), k=n_to_add)
             for key in self.dataset.keys():
-                new_dataset[key] += list(itemgetter(*rdm_idx)(self.dataset[key][:n_to_sample]))
+                mols_to_sample = self.dataset[key][:n_to_sample]
+                new_dataset[key] += list(itemgetter(*rdm_idx)(mols_to_sample)) if len(rdm_idx) != 1 else [mols_to_sample[rdm_idx[0]]]
             
         return self._create_dataset(new_dataset)
 
