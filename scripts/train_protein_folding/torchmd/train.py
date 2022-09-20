@@ -53,8 +53,14 @@ def main():
     protein_factory = ProteinFactory()
     protein_factory.load_dataset(args.dataset)
     
-    train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
-    
+    val_prot = None
+    while val_prot != 'cln_ca':
+        train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
+        if len(val_set) == 0:
+            break
+        val_prot = val_set.get('names')[0]
+        print(val_prot)
+        
     dataset_names = protein_factory.get_names()
     train_set_size = len(train_set)
     val_set_size = len(val_set)
@@ -116,7 +122,7 @@ def main():
 
     # 4. Define Learner
     learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir,
-                      keys = ('epoch', 'level', 'steps', 'train_loss', 'val_loss', 'loss_1', 'loss_2'))    
+                      keys = ('epoch', 'level', 'steps', 'train_loss', 'val_loss', 'loss_1', 'loss_2', 'val_loss_1', 'val_loss_2'))    
 
     
     # 5. Define epoch and Levels
