@@ -175,11 +175,10 @@ class WeightedEnsemble:
             else:
                 N = embeddings.shape[1]
                 energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime, N)  
+                
                 loss = we_loss + self.energy_weight * energy_loss
                 values_dict['loss_2'] = energy_loss.item()
-            
             values_dict['loss_1'] = we_loss.item()
-            
             
         else:
             if x is None:
@@ -193,7 +192,7 @@ class WeightedEnsemble:
                 values_dict['val_loss_2'] = energy_loss.item()
             
             values_dict['val_loss_1'] = we_loss.item()
-        
+                        
         values_dict['avg_metric'] = avg_metric
         
         return loss, values_dict
@@ -221,9 +220,8 @@ class WeightedEnsemble:
         
     
     def compute_gradients(self, names, mols, ground_truths, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
-        self.optimizer.zero_grad()
         if val == False:
-            
+            self.optimizer.zero_grad()
             loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
