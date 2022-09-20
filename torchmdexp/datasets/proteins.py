@@ -87,4 +87,12 @@ class ProteinDataset(Dataset):
         keys = list(self.dataset.keys())
         for idx, rdm_list in enumerate(zip(*temp)):
             self.dataset[keys[idx]] = list(rdm_list)
-
+    
+    def add_gaussian_noise(self, mu = 0.0, std = 0.1, sigma = 1.0):
+        
+        noisy_molecules = []
+        for mol in self.dataset.get('molecules'):
+            noise = np.random.normal(mu, std, size = mol.coords.shape).astype(mol.coords.dtype)
+            mol.coords = mol.coords + sigma * noise
+            noisy_molecules.append(mol)
+        self.dataset['molecules'] = noisy_molecules
