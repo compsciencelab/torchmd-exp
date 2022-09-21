@@ -57,7 +57,7 @@ class ProteinDataset(Dataset):
         if n_to_add > 0 and batch_size < self.size and first_idx < self.size:
             n_to_sample = self.size - (batch_size - n_to_add)
             
-            rdm_idx = random.choices(range(n_to_sample), k=n_to_add)
+            rdm_idx = random.sample(range(n_to_sample), k=n_to_add)
             for key in self.dataset.keys():
                 mols_to_sample = self.dataset[key][:n_to_sample]
                 new_dataset[key] += list(itemgetter(*rdm_idx)(mols_to_sample)) if len(rdm_idx) != 1 else [mols_to_sample[rdm_idx[0]]]
