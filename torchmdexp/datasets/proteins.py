@@ -45,15 +45,16 @@ class ProteinDataset(Dataset):
         
         new_dataset = {key: self.dataset[key][index] for key in self.dataset.keys()}
         
-        try:
+        if isinstance(index, slice):
             index_list = list(range(index.stop)[index]) if index.stop is not None else [0]
-        except AttributeError:
-            index_list = [0]
-        
+        elif isinstance(index, int):
+            index_list = [index]
+        else:
+            raise IndexError(f'Index {index} provided is not as slice nor an integer.')
+
         first_idx = index_list[0]
         n_to_add = (index_list[-1] + 1) - self.size
         batch_size = len(index_list)
-        
         if n_to_add > 0 and batch_size < self.size and first_idx < self.size:
             rdm_idx = torch.multinomial(torch.ones(first_idx), num_samples=n_to_add)
             

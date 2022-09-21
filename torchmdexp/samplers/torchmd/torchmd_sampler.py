@@ -1,5 +1,5 @@
 from ..base import Sampler
-from ..utils import get_embeddings, get_native_coords, create_system
+from ..utils import get_embeddings, create_system
 import torch
 from torchmd.forcefields.forcefield import ForceField
 from torchmd.forces import Forces
@@ -7,12 +7,10 @@ from torchmd.integrator import Integrator, maxwell_boltzmann
 from torchmd.parameters import Parameters
 from torchmd.systems import System
 from torchmdexp.nnp.calculators import External
-from torchmdexp.forcefields.full_pseudo_ff import FullPseudoFF
 import collections
-import numpy as np
 import copy
+import os
 
-from torchmdexp.datasets.utils import CA_MAP, CACB_MAP
 
 class TorchMD_Sampler(Sampler):
     """
@@ -93,7 +91,8 @@ class TorchMD_Sampler(Sampler):
                  ff_pseudo_scale=1,
                  ff_full_scale=1,
                  ff_save=None,
-                 multichain_emb=False
+                 multichain_emb=False,
+                 log_dir = ''
                 ):
         
         self.mols = mols
@@ -130,6 +129,8 @@ class TorchMD_Sampler(Sampler):
         
         # Create the dictionary used to return states and prior energies
         self.sim_dict = collections.defaultdict(dict)
+
+        self.log_dir = log_dir
         
         
     @classmethod
@@ -150,7 +151,8 @@ class TorchMD_Sampler(Sampler):
                        ff_pseudo_scale=1,
                        ff_full_scale=1,
                        ff_save=None,
-                       multichain_emb=False):
+                       multichain_emb=False,
+                       log_dir=''):
         """ 
         Returns a function to create new TorchMD_Sampler instances.
         
@@ -217,7 +219,8 @@ class TorchMD_Sampler(Sampler):
                        ff_pseudo_scale,
                        ff_full_scale,
                        ff_save,
-                       multichain_emb)
+                       multichain_emb,
+                       log_dir)
         
         return create_sampler_instance
 
@@ -329,7 +332,7 @@ class TorchMD_Sampler(Sampler):
         if self.ff_type == 'file':
             ff = ForceField.create(mol, self.forcefield)        
         elif self.ff_type == 'full_pseudo_receptor':
-            ff = FullPseudoFF().create([mol], self.forcefield, self.ff_pseudo_scale, self.ff_full_scale, self.ff_save)
+            ff = ForceField.create(mol, os.path.join(self.log_dir, 'forcefield.yaml'))
         else:
             raise ValueError('ff_type should be ("file" | "full_pseudo_receptor") but ',
                              'got ' + self.ff_type + ' instead')
