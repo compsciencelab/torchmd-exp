@@ -124,15 +124,15 @@ class WeightedEnsemble:
         
         # Compute external Epot and create a new eternal Epot detached 
         U_ext, U_ext_hat = self._extEpot(states, embeddings, nnp_prime, mode="train")
-        
         #U_ext_hat = nnp_prime.detach()
         
-        U_prior = U_prior.to(U_ext.device)
+        U_arg = -torch.divide(torch.subtract(U_ext, U_ext_hat), self.T*BOLTZMAN)
 
-        U_ref = torch.add(U_prior, U_ext_hat)
-        U = torch.add(U_prior, U_ext)
+        # Avoid very large exponential arguments because they can produce infinities
+        if (U_arg.abs() > 80).any(): 
+            U_arg = (U_arg - U_arg.min()) / (U_arg.max() - U_arg.min())
 
-        exponentials = torch.exp(-torch.divide(torch.subtract(U, U_ref), self.T*BOLTZMAN))
+        exponentials = torch.exp(U_arg)
         weights = torch.divide(exponentials, exponentials.sum())
         return weights, U_ext_hat
     
@@ -239,7 +239,7 @@ class WeightedEnsemble:
             grads = None
             loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
             loss = loss.detach()
-                
+
         return grads, loss.item(), values_dict
         
     

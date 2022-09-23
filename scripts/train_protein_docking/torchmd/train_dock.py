@@ -130,6 +130,7 @@ def main():
         
         assert args.max_loss >= args.thresh_lvlup
         min_train_loss = args.max_loss
+        min_print = min_train_loss
         lvl_up = False
         epoch_level = 0
         
@@ -155,47 +156,20 @@ def main():
                 learner.set_batch(batch)
                 learner.step()
 
-            # Val step
-            #if len(val_set) > 0:
-            #    val_set.shuffle()
-            #    if (epoch == 1 or (epoch % args.val_freq) == 0):
-            #        for i in range(0, val_set_size, sim_batch_size):
-            #            batch = val_set[ i : sim_batch_size + i]
-            #            learner.set_batch(batch)
-            #            learner.step(val=True)
-            
-            #if args.test_set:
-            #    if (epoch == 1 or (epoch % args.test_freq) == 0):
-            #        learner.set_ground_truth(test_ground_truth)
-            #        learner.step(test=True)
-
             # Get training process information
             learner.compute_epoch_stats()
             learner.write_row()
             train_loss = learner.get_train_loss()
 
-            print(f"Epoch: {epoch}  |  Epoch_level: {epoch_level}  |  Train Loss (Min): {train_loss:.2f} ({min_train_loss:.2f})    ", 
+            print(f"Epoch: {epoch}  |  Epoch_level: {epoch_level}  |  Train Loss (Min): {train_loss:.2f} ({min_print:.2f})    ", 
                   end='\r', flush=True)
 
             # Save
-            if train_loss < args.max_loss and train_loss < min_train_loss:
+            if train_loss < args.thresh_lvlup and train_loss < min_train_loss:
                 min_train_loss = train_loss
                 learner.save_model()
+                min_print = train_loss if train_loss < min_print else min_print
                 if epoch_level < 10: min_train_loss = args.thresh_lvlup * 1.1
-                
-            # if train_loss < 2 * args.thresh_lvlup and (epoch % 5) == 0:
-            #     lr *= args.lr_decay
-            #     lr = args.min_lr if lr < args.min_lr else lr
-            #     if lr == args.min_lr and lr_warn: 
-            #         lr_warn = False
-            #     learner.set_lr(lr)
-
-            # if (epoch % 100) == 0 and steps < args.max_steps:
-            #     steps += args.steps
-            #     output_period += args.output_period
-            #     learner.set_steps(steps)
-            #     learner.set_output_period(output_period)  
-            #     min_val_loss = args.max_val_loss
             
             # Check before level up. If last level -> Don't level up. Spend at least 10 epochs per level
             if min_train_loss < args.thresh_lvlup and level + 1 < args.num_levels and epoch_level >= 10:
