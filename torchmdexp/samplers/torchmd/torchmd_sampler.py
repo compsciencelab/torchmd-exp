@@ -10,6 +10,7 @@ from torchmdexp.nnp.calculators import External
 import collections
 import copy
 import os
+import numpy as np
 
 
 class TorchMD_Sampler(Sampler):
@@ -249,9 +250,9 @@ class TorchMD_Sampler(Sampler):
         integrator = self._set_integrator(self.mols, self.lengths)
         
         # Define the states
-        nstates = int(steps // output_period)
-        states = torch.zeros(nstates, len(integrator.systems.pos[0]), 3, device = "cpu",
-                         dtype = self.precision)
+        nstates = int(steps // output_period) * self.replicas
+        states = torch.zeros(nstates, len(integrator.systems.pos[0]), 3, 
+                        device = "cpu", dtype = self.precision)
 
         # Create dict to collect states and energies
         sample_dict = copy.deepcopy(self.sim_dict)
@@ -265,8 +266,8 @@ class TorchMD_Sampler(Sampler):
         # Run the simulation
         for i in iterator:
             Ekin, Epot, T = integrator.step(niter=output_period)
-            states[i-1] = integrator.systems.pos.to("cpu")
-        
+            states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
+
         sample_dict = self._split_states(states, sample_dict)          
         self.sim_dict.update(sample_dict)
         return self.sim_dict
@@ -346,7 +347,7 @@ class TorchMD_Sampler(Sampler):
         # Create the system
         system = System(mol.numAtoms, nreplicas=self.replicas, precision = self.precision, device=self.device)
         system.set_positions(mol.coords)
-        system.set_box(mol.box)
+        system.set_box(np.tile(mol.box, self.replicas))
         system.set_velocities(maxwell_boltzmann(forces.par.masses, T=self.temperature, replicas=self.replicas))
         
         integrator = Integrator(system, forces, self.timestep, gamma = self.langevin_gamma, 
