@@ -28,6 +28,12 @@ class Learner:
         
         self.train_losses = []
         self.val_losses = []
+
+        self.loss_1 = []
+        self.loss_2 = []
+        self.val_loss_1 = []
+        self.val_loss_2 = []
+
         self.train_loss = None
         self.val_loss = None
         self.level = 0
@@ -53,15 +59,27 @@ class Learner:
         
         # Update step
         info = self.update_worker.step(self.steps, self.output_period, val)
-        self.results_dict.update(info)
+        
         self.results_dict['level'] = self.level
         self.results_dict['steps'] = self.steps
         
         if val == False:
             self.train_losses.append(info['train_loss'])
+            if 'loss_1' in self.results_dict.keys():
+                self.loss_1.append(info['loss_1'])
+            if 'loss_2' in self.results_dict.keys():
+                self.loss_2.append(info['loss_1'])
         else:
             self.val_losses.append(info['val_loss'])
-                
+            if 'val_loss_1' in self.results_dict.keys():
+                self.val_loss_1.append(info['val_loss_1'])
+            if 'val_loss_2' in self.results_dict.keys():
+                self.val_loss_2.append(info['val_loss_1'])
+        
+        [info.pop(k, None) for k in ['train_loss', 'val_loss', 'loss_1', 'loss_2', 'val_loss_1', 'val_loss_2']]
+
+        self.results_dict.update(info)
+
     def level_up(self):
         """ Increases level of difficulty """
         
@@ -102,16 +120,29 @@ class Learner:
         self.train_loss = mean(self.train_losses)
         self.results_dict['train_loss'] = self.train_loss
         self.results_dict['epoch'] = self.epoch
-        
-        self.val_losses = []
-        self.train_losses = []
-        self.epoch += 1
 
         if len(self.val_losses) > 0:
             self.val_loss = mean(self.val_losses)
             self.results_dict['val_loss'] = self.val_loss
             self.val_losses = []
-        
+        else:
+            self.results_dict['val_loss'] = None
+
+        self.train_losses = []
+        self.epoch += 1
+
+        if len(self.loss_1) > 0:
+            self.results_dict['loss_1'] = mean(self.loss_1)
+            self.loss_1 = []
+        if len(self.loss_2) > 0:
+            self.results_dict['loss_1'] = mean(self.loss_2)
+            self.loss_2 = []
+        if len(self.val_loss_1) > 0:
+            self.results_dict['val_loss_1'] = mean(self.val_loss_1)
+            self.val_loss_1 = []
+        if len(self.val_loss_1) > 0:
+            self.results_dict['val_loss_2'] = mean(self.val_loss_2)
+            self.val_loss_2 = []
         
     def write_row(self):
         if self.logger:
