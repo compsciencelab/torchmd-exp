@@ -20,6 +20,7 @@ import ray
 import numpy as np
 import os
 import random
+import copy
 
 def main():
     args = get_args()
@@ -52,19 +53,14 @@ def main():
     # Load training molecules
     protein_factory = ProteinFactory()
     protein_factory.load_dataset(args.dataset)
-    
-    val_prot = None
-    while val_prot != 'cln_ca':
-        train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
-        if len(val_set) == 0:
-            break
-        val_prot = val_set.get('names')[0]
-        print(val_prot)
-        
+
+    train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
     dataset_names = protein_factory.get_names()
+
     train_set_size = len(train_set)
     val_set_size = len(val_set)
-    
+
+    print(train_set_size)
     
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
@@ -135,7 +131,10 @@ def main():
                 
         # Train step
         for i in range(0, train_set_size, sim_batch_size):
-            batch = train_set[ i : sim_batch_size + i]
+            batch = copy.copy(train_set[ i : sim_batch_size + i])
+            if args.add_noise == True:
+                batch.add_gaussian_noise(std=0.1)
+                
             learner.set_batch(batch)
             learner.step()
 
@@ -258,7 +257,8 @@ def get_args(arguments=None):
     parser.add_argument('--exclusions', default=('bonds', 'angles', '1-4'), type=tuple, help='exclusions for the LJ or repulsionCG term')
     parser.add_argument('--loss_fn', type=str, default='margin_ranking', help='Type of loss fn')
     parser.add_argument('--margin', type=float, default=1.0, help='Margin for margin ranking losss')
-   
+    parser.add_argument('--add-noise', type=bool, default=False, help='Add noise to input coords or not')
+
 
     
     args = parser.parse_args()

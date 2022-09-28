@@ -1,4 +1,5 @@
 from moleculekit.molecule import Molecule
+from torchmdexp.datasets.utils import get_chains
 from torchmdexp.samplers.utils import get_native_coords
 from .proteins import ProteinDataset
 import os
@@ -32,6 +33,10 @@ class LevelsFactory:
                 path = os.path.join(level_dir, name + '.pdb')
                 if os.path.exists(path):
                     mol = Molecule(path)
+
+                    receptor_chain, _ = get_chains(mol, full=False)
+                    mol.chain = np.where(mol.chain == receptor_chain, f'R{level}{idx}', f'L{level}{idx}')
+
                     nat_coords = get_native_coords(mol.copy())
                     
                     self.names.append(f'{name}_{level}')
@@ -62,11 +67,17 @@ class LevelsFactory:
         params = copy.deepcopy(self.dataset[level])
         for i in range(level):
             for key in params.keys():
-                params[key] += self.dataset[i][key]
+                params[key] += copy.deepcopy(self.dataset[i][key])
         return ProteinDataset(data_dict=params)
     
     def get(self, level, key):
         return self.dataset[level][key]
+    
+    def get_mols(self):
+        mols = []
+        for level in range(self.num_levels):
+            mols += self.dataset[level]['molecules']
+        return mols
     
     def get_names(self):
         return self.names

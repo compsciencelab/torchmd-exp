@@ -100,7 +100,7 @@ class WeightedEnsemble:
         
         # Prepare pos, embeddings and batch tensors
         pos = states.to(self.device).type(torch.float32).reshape(-1, 3)
-        embeddings = embeddings.repeat(states.shape[0] , 1)
+        embeddings = embeddings[0].repeat(states.shape[0], 1)
         batch = torch.arange(embeddings.size(0), device=self.device).repeat_interleave(
             embeddings.size(1)
         )
@@ -124,15 +124,15 @@ class WeightedEnsemble:
         
         # Compute external Epot and create a new eternal Epot detached 
         U_ext, U_ext_hat = self._extEpot(states, embeddings, nnp_prime, mode="train")
-        
         #U_ext_hat = nnp_prime.detach()
         
-        U_prior = U_prior.to(U_ext.device)
+        U_arg = -torch.divide(torch.subtract(U_ext, U_ext_hat), self.T*BOLTZMAN)
 
-        U_ref = torch.add(U_prior, U_ext_hat)
-        U = torch.add(U_prior, U_ext)
+        # Avoid very large exponential arguments because they can produce infinities
+        if (U_arg.abs() > 80).any(): 
+            U_arg = (U_arg - U_arg.min()) / (U_arg.max() - U_arg.min())
 
-        exponentials = torch.exp(-torch.divide(torch.subtract(U, U_ref), self.T*BOLTZMAN))
+        exponentials = torch.exp(U_arg)
         weights = torch.divide(exponentials, exponentials.sum())
         return weights, U_ext_hat
     
@@ -151,12 +151,12 @@ class WeightedEnsemble:
         
         # Compute the weighted ensemble of the conformations 
         states = states.to(self.device)
-        
+
         obs = torch.tensor([self.metric(state, ground_truths, mols) for state in states], device = self.device, dtype = self.precision)
         avg_metric = torch.mean(obs).detach().item()
 
         w_ensemble = torch.multiply(weights, obs).sum(0) 
-        
+
         return w_ensemble, avg_metric
     
 
@@ -220,12 +220,13 @@ class WeightedEnsemble:
         
     
     def compute_gradients(self, names, mols, ground_truths, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
+        batch_states = states.shape[0] // self.replicas
         if val == False:
             self.optimizer.zero_grad()
-            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
-            loss.backward()
+            for irepl in range(self.replicas):
+                loss, values_dict = self.compute_loss(ground_truths, mols, states[batch_states * irepl: batch_states * (irepl+1)], embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
+                loss.backward()
             torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
-
 
             grads = []
             for p in self.nnp.parameters():
@@ -237,9 +238,10 @@ class WeightedEnsemble:
                         grads.append(p.grad)
         elif val == True:
             grads = None
-            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
+            for irepl in range(self.replicas):
+                loss, values_dict = self.compute_loss(ground_truths, mols, states[batch_states * irepl: batch_states * (irepl+1)], embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
             loss = loss.detach()
-                
+
         return grads, loss.item(), values_dict
         
     

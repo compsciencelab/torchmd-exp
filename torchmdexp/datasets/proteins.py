@@ -45,21 +45,22 @@ class ProteinDataset(Dataset):
         
         new_dataset = {key: self.dataset[key][index] for key in self.dataset.keys()}
         
-        try:
+        if isinstance(index, slice):
             index_list = list(range(index.stop)[index]) if index.stop is not None else [0]
-        except AttributeError:
-            index_list = [0]
-        
+        elif isinstance(index, int):
+            index_list = [index]
+        else:
+            raise IndexError(f'Index {index} provided is not as slice nor an integer.')
+
         first_idx = index_list[0]
         n_to_add = (index_list[-1] + 1) - self.size
         batch_size = len(index_list)
-        
         if n_to_add > 0 and batch_size < self.size and first_idx < self.size:
-            n_to_sample = self.size - (batch_size - n_to_add)
+            rdm_idx = torch.multinomial(torch.ones(first_idx), num_samples=n_to_add)
             
-            rdm_idx = random.choices(range(n_to_sample), k=n_to_add)
             for key in self.dataset.keys():
-                new_dataset[key] += list(itemgetter(*rdm_idx)(self.dataset[key][:n_to_sample]))
+                mols_to_sample = self.dataset[key][:first_idx]
+                new_dataset[key] += list(itemgetter(*rdm_idx)(mols_to_sample)) if len(rdm_idx) != 1 else [mols_to_sample[rdm_idx[0]]]
             
         return self._create_dataset(new_dataset)
 
@@ -87,4 +88,12 @@ class ProteinDataset(Dataset):
         keys = list(self.dataset.keys())
         for idx, rdm_list in enumerate(zip(*temp)):
             self.dataset[keys[idx]] = list(rdm_list)
-
+    
+    def add_gaussian_noise(self, mu = 0.0, std = 0.1, sigma = 1.0):
+        
+        noisy_molecules = []
+        for mol in self.dataset.get('molecules'):
+            noise = np.random.normal(mu, std, size = mol.coords.shape).astype(mol.coords.dtype)
+            mol.coords = mol.coords + sigma * noise
+            noisy_molecules.append(mol)
+        self.dataset['molecules'] = noisy_molecules
