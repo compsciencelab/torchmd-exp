@@ -98,26 +98,34 @@ class WeightedEnsemble:
     
     def _extEpot(self, states, embeddings, nnp_prime, mode="train"):
         
-        # Prepare pos, embeddings and batch tensors
-        pos = states.to(self.device).type(torch.float32).reshape(-1, 3)
-        embeddings = embeddings[0].repeat(states.shape[0], 1)
-        batch = torch.arange(embeddings.size(0), device=self.device).repeat_interleave(
-            embeddings.size(1)
-        )
-        embeddings = embeddings.reshape(-1).to(self.device)
-                
-        # Compute external energies
-        if nnp_prime == None:
-            ext_energies, _ = self.nnp(embeddings, pos, batch)
-            ext_energies_hat = ext_energies.detach()
-            del _
-        else:
-            ext_energies_hat , _ = nnp_prime(embeddings, pos, batch)
-            ext_energies_hat.detach()
-            del _
-            ext_energies, _ = self.nnp(embeddings, pos, batch)
-            del _
-        
+        batch_num = states.shape[0] // self.replicas
+        ext_energies, ext_energies_hat = torch.tensor([], device=self.device), torch.tensor([], device=self.device)
+
+        for irepl in range(self.replicas):
+            batch_states = states[batch_num * irepl: batch_num * (irepl+1)]
+
+            # Prepare pos, embeddings and batch tensors
+            pos = batch_states.to(self.device).type(torch.float32).reshape(-1, 3)
+            embeddings_nnp = embeddings[0].repeat(batch_states.shape[0], 1)
+            batch = torch.arange(embeddings_nnp.size(0), device=self.device).repeat_interleave(
+                embeddings_nnp.size(1)
+            )
+            embeddings_nnp = embeddings_nnp.reshape(-1).to(self.device)
+                    
+            # Compute external energies
+            if nnp_prime == None:
+                batch_ext_energies, _ = self.nnp(embeddings_nnp, pos, batch)
+                batch_ext_energies_hat = batch_ext_energies.detach()
+                del _
+            else:
+                batch_ext_energies_hat , _ = nnp_prime(embeddings_nnp, pos, batch)
+                batch_ext_energies_hat.detach()
+                del _
+                batch_ext_energies, _ = self.nnp(embeddings_nnp, pos, batch)
+                del _
+            ext_energies = torch.cat((ext_energies, batch_ext_energies), axis=0)
+            ext_energies_hat = torch.cat((ext_energies_hat, batch_ext_energies_hat), axis=0)
+
         return ext_energies.squeeze(1), ext_energies_hat.squeeze(1)
                        
     def _weights(self, states, embeddings, U_prior, nnp_prime):
@@ -220,13 +228,12 @@ class WeightedEnsemble:
         
     
     def compute_gradients(self, names, mols, ground_truths, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
-        batch_states = states.shape[0] // self.replicas
         if val == False:
             self.optimizer.zero_grad()
-            for irepl in range(self.replicas):
-                loss, values_dict = self.compute_loss(ground_truths, mols, states[batch_states * irepl: batch_states * (irepl+1)], embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
-                loss.backward()
+            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
+
 
             grads = []
             for p in self.nnp.parameters():
@@ -238,8 +245,7 @@ class WeightedEnsemble:
                         grads.append(p.grad)
         elif val == True:
             grads = None
-            for irepl in range(self.replicas):
-                loss, values_dict = self.compute_loss(ground_truths, mols, states[batch_states * irepl: batch_states * (irepl+1)], embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
+            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
             loss = loss.detach()
 
         return grads, loss.item(), values_dict
