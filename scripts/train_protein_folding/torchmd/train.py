@@ -53,7 +53,7 @@ def main():
     # Load training molecules
     protein_factory = ProteinFactory()
     protein_factory.load_dataset(args.dataset)
-    #protein_factory.set_dataset_size(1000)
+    protein_factory.set_dataset_size(100)
 
     train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
     dataset_names = protein_factory.get_names()
@@ -129,14 +129,18 @@ def main():
         train_set.shuffle()
                 
         # Train step
+        b = 0
         for i in range(0, train_set_size, sim_batch_size):
+            b += 1
+            start = time.perf_counter()
             batch = copy.copy(train_set[ i : sim_batch_size + i])
             if args.add_noise == True:
-                batch.add_gaussian_noise(std=0.1)
-                
+                batch.add_gaussian_noise(std=0.01)
+
             learner.set_batch(batch)
             learner.step()
-
+            end = time.perf_counter()
+            print(f'Epoch {b} ... time per epoch: ', end-start)
         # Val step
         epoch += 1
         if len(val_set) > 0:
