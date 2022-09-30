@@ -214,10 +214,11 @@ class WeightedEnsemble:
             energy, forces = self.nnp(embeddings, pos, batch)
         else:
             energy, forces = nnp_prime(embeddings, pos, batch)     
-
         
-        return l1_loss(y, forces)/(3*N)
-        
+        if y.shape[-1] == 1:
+            return l1_loss(y, energy)
+        elif y.shape[-1] == 3:
+            l1_loss(y, forces)/(3*N)        
     
     def compute_gradients(self, names, mols, ground_truths, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
         if val == False:

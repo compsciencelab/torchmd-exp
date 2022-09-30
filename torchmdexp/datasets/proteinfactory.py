@@ -89,12 +89,15 @@ class ProteinFactory:
                           x, dtype=pos.dtype,
                       )
                 x = pos.type(torch.float64)
-
+                
+                
                 # Forces to torch tensor
-                forces = torch.tensor(
+                y = torch.tensor(
                     y, dtype=pos.dtype,
-                )
-                y = forces.type(torch.float64).squeeze()
+                ).type(torch.float64)
+                
+                if y.shape[-1] == 3:
+                    y = y.squeeze()
                 
             
             

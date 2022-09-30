@@ -136,9 +136,10 @@ def main():
                 
         # Train step
         for i in range(0, train_set_size, sim_batch_size):
-            batch = copy.copy(train_set[ i : sim_batch_size + i])
+            batch = copy.deepcopy(train_set[ i : sim_batch_size + i])
+            
             if args.add_noise == True:
-                batch.add_gaussian_noise(std=0.1)
+                batch.add_gaussian_noise(std=0.01)
                 
             learner.set_batch(batch)
             learner.step()
@@ -166,14 +167,7 @@ def main():
             if loss < max_loss:
                 max_loss = loss
                 learner.save_model()
-            
-            
-            #if val_loss < 2.8 and (epoch % 50) == 0:
-            #    lr *= args.lr_decay
-            #    lr = args.min_lr if lr < args.min_lr else lr
-            #    learner.set_lr(lr)
-            
-            
+                   
         if (epoch % 100) == 0 and steps < args.max_steps:
             steps += args.steps
             output_period += args.output_period
