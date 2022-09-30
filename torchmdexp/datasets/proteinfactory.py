@@ -7,6 +7,7 @@ from moleculekit.molecule import Molecule
 import copy
 from torchmdexp.samplers.utils import get_native_coords
 import torch
+from tqdm import tqdm
 
 class ProteinFactory:
     
@@ -14,15 +15,18 @@ class ProteinFactory:
         
         self.dataset = None
         self.set_size = None
-        
         self.train_set_size = None
         self.val_set_size = None
             
     def __len__(self):
         len(self.dataset)
-    
+
     def load_dataset(self, filename):
         self.dataset = ProteinDataset(filename)
+    
+    def set_dataset_size(self, size):
+        self.dataset.shuffle()
+        self.dataset = self.dataset[:size]
             
     def train_val_split(self, val_size=0.0):
         
@@ -61,7 +65,8 @@ class ProteinFactory:
                    'x': [],
                    'y': []}
         
-        for idx, protein in enumerate(pdb_ids):
+        length = len(pdb_ids)
+        for idx, protein in tqdm(enumerate(pdb_ids), total=length):
             
             ground_truth = os.path.join(data_dir, 'ground_truths' , protein + '.pdb')
 
@@ -75,7 +80,7 @@ class ProteinFactory:
                 native_coords = get_native_coords(native_mol)
                 
             if os.path.isfile(init_state):
-                mol = Molecule(frames)
+                mol = Molecule(init_state)
                 
             if topo_dict:
                     mol = pdb2psf_CA(mol, **topo_dict)  
@@ -109,34 +114,3 @@ class ProteinFactory:
             dataset['y'].append(y)
             
         np.save(out_dir ,dataset)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-a = """    
-    def set_levels(self, levels_dir):
-        levels = [filename for filename in os.listdir(levels_dir) if not filename.startswith('.')]
-        levels = [x for _, x in sorted(zip([int(re.findall(r'\d+', level)[0]) for level in levels], levels))]
-        self.num_levels = len(levels)
-        
-        [self.set_level(idx, os.path.join(levels_dir, l)) for idx, l in enumerate(levels)]
-        
-    def set_level(self, level, levels_dir):
-        self.levels[level] = {'ground_truth': self.set_proteins_dataset(os.path.join(levels_dir, 'ground_truth')),
-                              'init_states': self.set_proteins_dataset(os.path.join(levels_dir, 'init_states'))
-                             }
-        
-    def get_level(self, level):
-        
-        return self.levels[level]['init_states']
-    
-    def get_num_levels(self):
-        return self.num_levels
-    """
-        
-        

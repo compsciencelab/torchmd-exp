@@ -1,5 +1,6 @@
 import torch
 from torchmdexp.datasets.levelsfactory import LevelsFactory
+from torchmdexp.forcefields.full_pseudo_ff import FullPseudoFF
 from torchmdexp.samplers.torchmd.torchmd_sampler import TorchMD_Sampler
 from torchmdexp.samplers.utils import moleculekit_system_factory
 from torchmdexp.scheme.scheme import Scheme
@@ -26,7 +27,6 @@ def main():
     steps = args.steps
     output_period = args.output_period
     nstates = steps // output_period
-    sim_batch_size = args.sim_batch_size
     batch_size = args.batch_size
     lr = args.lr
     num_sim_workers = args.num_sim_workers
@@ -43,7 +43,17 @@ def main():
     # Load training molecules
     levels_factory = LevelsFactory(args.dataset, args.levels_dir, args.num_levels, out_dir=args.log_dir)
     train_names = levels_factory.get_names()
-    
+
+    all_molecules = levels_factory.get_mols()
+
+    # Create the unique forcefield to be used
+    if args.ff_type == 'full_pseudo_receptor':
+        FullPseudoFF().create(
+            all_molecules,
+            args.forcefield, args.ff_pseudo_scale, args.ff_full_scale, 
+            args.log_dir
+        )
+
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
@@ -55,7 +65,8 @@ def main():
                                                              exclusions=args.exclusions, timestep=args.timestep,precision=torch.double, 
                                                              temperature=args.temperature, langevin_temperature=args.langevin_temperature,
                                                              langevin_gamma=args.langevin_gamma,
-                                                             multichain_emb=args.multichain_emb
+                                                             multichain_emb=args.multichain_emb,
+                                                             log_dir=args.log_dir
                                                             )
     
     
@@ -119,8 +130,8 @@ def main():
         
         assert args.max_loss >= args.thresh_lvlup
         min_train_loss = args.max_loss
+        min_print = min_train_loss
         lvl_up = False
-        lr_warn = True
         epoch_level = 0
         
         # Update level
@@ -129,7 +140,8 @@ def main():
         print(f"Using: {train_set.get('names')}")
             
         # Set sim batch size:
-        while sim_batch_size > args.sim_batch_size:
+        sim_batch_size = args.sim_batch_size
+        while sim_batch_size > len(train_set):
             sim_batch_size //= 2
             
         while not lvl_up:
@@ -143,48 +155,21 @@ def main():
                 batch = train_set[i:sim_batch_size+i]
                 learner.set_batch(batch)
                 learner.step()
-            
-            # Val step
-            #if len(val_set) > 0:
-            #    val_set.shuffle()
-            #    if (epoch == 1 or (epoch % args.val_freq) == 0):
-            #        for i in range(0, val_set_size, sim_batch_size):
-            #            batch = val_set[ i : sim_batch_size + i]
-            #            learner.set_batch(batch)
-            #            learner.step(val=True)
-            
-            #if args.test_set:
-            #    if (epoch == 1 or (epoch % args.test_freq) == 0):
-            #        learner.set_ground_truth(test_ground_truth)
-            #        learner.step(test=True)
 
             # Get training process information
             learner.compute_epoch_stats()
             learner.write_row()
             train_loss = learner.get_train_loss()
 
-            print(f"Epoch: {epoch}  |  Epoch_level: {epoch_level}  |  Lr_max: {not lr_warn}  |  Train Loss (Min): {train_loss:.2f} ({min_train_loss:.2f})    ", 
+            print(f"Epoch: {epoch}  |  Epoch_level: {epoch_level}  |  Train Loss (Min): {train_loss:.2f} ({min_print:.2f})    ", 
                   end='\r', flush=True)
 
             # Save
-            if train_loss < args.max_loss and train_loss < min_train_loss:
+            if train_loss < args.thresh_lvlup and train_loss < min_train_loss:
                 min_train_loss = train_loss
                 learner.save_model()
+                min_print = train_loss if train_loss < min_print else min_print
                 if epoch_level < 10: min_train_loss = args.thresh_lvlup * 1.1
-                
-            if train_loss < 2 * args.thresh_lvlup and (epoch % 5) == 0:
-                lr *= args.lr_decay
-                lr = args.min_lr if lr < args.min_lr else lr
-                if lr == args.min_lr and lr_warn: 
-                    lr_warn = False
-                learner.set_lr(lr)
-
-            # if (epoch % 100) == 0 and steps < args.max_steps:
-            #     steps += args.steps
-            #     output_period += args.output_period
-            #     learner.set_steps(steps)
-            #     learner.set_output_period(output_period)  
-            #     min_val_loss = args.max_val_loss
             
             # Check before level up. If last level -> Don't level up. Spend at least 10 epochs per level
             if min_train_loss < args.thresh_lvlup and level + 1 < args.num_levels and epoch_level >= 10:

@@ -53,20 +53,14 @@ def main():
     # Load training molecules
     protein_factory = ProteinFactory()
     protein_factory.load_dataset(args.dataset)
-    
-    val_prot = None
-    while val_prot != 'cln_ca':
-        train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
-        if len(val_set) == 0:
-            break
-        val_prot = val_set.get('names')[0]
-        print(val_prot)
-        
+    protein_factory.set_dataset_size(100)
+
+    train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
     dataset_names = protein_factory.get_names()
+    
     train_set_size = len(train_set)
     val_set_size = len(val_set)
-    
-    
+
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
                                                              replicas=args.replicas, cutoff=args.cutoff, rfa=args.rfa,
@@ -125,7 +119,7 @@ def main():
     learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir,
                       keys = ('epoch', 'level', 'steps', 'train_loss', 'val_loss', 'loss_1', 'loss_2', 'val_loss_1', 'val_loss_2'))    
 
-    
+    import time
     # 5. Define epoch and Levels
     epoch = 0        
     max_loss = args.max_loss
@@ -135,15 +129,26 @@ def main():
         train_set.shuffle()
                 
         # Train step
+        b = 0
         for i in range(0, train_set_size, sim_batch_size):
+<<<<<<< HEAD
             batch = copy.deepcopy(train_set[ i : sim_batch_size + i])
             
             if args.add_noise == True:
                 batch.add_gaussian_noise(std=0.01)
                 
+=======
+            b += 1
+            start = time.perf_counter()
+            batch = copy.copy(train_set[ i : sim_batch_size + i])
+            if args.add_noise == True:
+                batch.add_gaussian_noise(std=0.01)
+
+>>>>>>> b862f3a7ba6c80c63636c1dfda84a24f201c6de7
             learner.set_batch(batch)
             learner.step()
-
+            end = time.perf_counter()
+            print(f'Epoch {b} ... time per epoch: ', end-start)
         # Val step
         epoch += 1
         if len(val_set) > 0:
@@ -255,7 +260,7 @@ def get_args(arguments=None):
     parser.add_argument('--reduce-op', type=str, default='add', choices=['add', 'mean'], help='Reduce operation to apply to atomic predictions')
     parser.add_argument('--exclusions', default=('bonds', 'angles', '1-4'), type=tuple, help='exclusions for the LJ or repulsionCG term')
     parser.add_argument('--loss_fn', type=str, default='margin_ranking', help='Type of loss fn')
-    parser.add_argument('--margin', type=float, default=1.0, help='Margin for margin ranking losss')
+    parser.add_argument('--margin', type=float, default=0.0, help='Margin for margin ranking losss')
     parser.add_argument('--add-noise', type=bool, default=False, help='Add noise to input coords or not')
 
 

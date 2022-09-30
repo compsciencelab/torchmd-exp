@@ -138,8 +138,6 @@ def pdb2full_CA(mol):
     """Create topology for fully pseudobonded receptor."""
     import numpy as np
 
-    atom_types = [f'1{i:0>4d}' for i in range(mol.numAtoms)]
-
     chains = set(mol.chain)
     chain_idxs = [np.where(mol.chain == chain)[0][0] for chain in chains]
     chain_idxs.sort()
@@ -167,7 +165,6 @@ def pdb2full_CA(mol):
         )
 
     mol.bonds = all_bonds
-    mol.atomtype = np.array(atom_types)
     return all_bonds
 
 

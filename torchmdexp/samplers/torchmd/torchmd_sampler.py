@@ -1,5 +1,5 @@
 from ..base import Sampler
-from ..utils import get_embeddings, get_native_coords, create_system
+from ..utils import get_embeddings, create_system
 import torch
 from torchmd.forcefields.forcefield import ForceField
 from torchmd.forces import Forces
@@ -7,12 +7,11 @@ from torchmd.integrator import Integrator, maxwell_boltzmann
 from torchmd.parameters import Parameters
 from torchmd.systems import System
 from torchmdexp.nnp.calculators import External
-from torchmdexp.forcefields.full_pseudo_ff import FullPseudoFF
 import collections
-import numpy as np
 import copy
+import os
+import numpy as np
 
-from torchmdexp.datasets.utils import CA_MAP, CACB_MAP
 
 class TorchMD_Sampler(Sampler):
     """
@@ -93,7 +92,8 @@ class TorchMD_Sampler(Sampler):
                  ff_pseudo_scale=1,
                  ff_full_scale=1,
                  ff_save=None,
-                 multichain_emb=False
+                 multichain_emb=False,
+                 log_dir = ''
                 ):
         
         self.mols = mols
@@ -130,6 +130,8 @@ class TorchMD_Sampler(Sampler):
         
         # Create the dictionary used to return states and prior energies
         self.sim_dict = collections.defaultdict(dict)
+
+        self.log_dir = log_dir
         
         
     @classmethod
@@ -150,7 +152,8 @@ class TorchMD_Sampler(Sampler):
                        ff_pseudo_scale=1,
                        ff_full_scale=1,
                        ff_save=None,
-                       multichain_emb=False):
+                       multichain_emb=False,
+                       log_dir=''):
         """ 
         Returns a function to create new TorchMD_Sampler instances.
         
@@ -217,7 +220,8 @@ class TorchMD_Sampler(Sampler):
                        ff_pseudo_scale,
                        ff_full_scale,
                        ff_save,
-                       multichain_emb)
+                       multichain_emb,
+                       log_dir)
         
         return create_sampler_instance
 
@@ -246,9 +250,9 @@ class TorchMD_Sampler(Sampler):
         integrator = self._set_integrator(self.mols, self.lengths)
         
         # Define the states
-        nstates = int(steps // output_period)
-        states = torch.zeros(nstates, len(integrator.systems.pos[0]), 3, device = "cpu",
-                         dtype = self.precision)
+        nstates = int(steps // output_period) * self.replicas
+        states = torch.zeros(nstates, len(integrator.systems.pos[0]), 3, 
+                        device = "cpu", dtype = self.precision)
 
         # Create dict to collect states and energies
         sample_dict = copy.deepcopy(self.sim_dict)
@@ -262,8 +266,8 @@ class TorchMD_Sampler(Sampler):
         # Run the simulation
         for i in iterator:
             Ekin, Epot, T = integrator.step(niter=output_period)
-            states[i-1] = integrator.systems.pos.to("cpu")
-        
+            states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
+
         sample_dict = self._split_states(states, sample_dict)          
         self.sim_dict.update(sample_dict)
         return self.sim_dict
@@ -329,7 +333,7 @@ class TorchMD_Sampler(Sampler):
         if self.ff_type == 'file':
             ff = ForceField.create(mol, self.forcefield)        
         elif self.ff_type == 'full_pseudo_receptor':
-            ff = FullPseudoFF().create([mol], self.forcefield, self.ff_pseudo_scale, self.ff_full_scale, self.ff_save)
+            ff = ForceField.create(mol, os.path.join(self.log_dir, 'forcefield.yaml'))
         else:
             raise ValueError('ff_type should be ("file" | "full_pseudo_receptor") but ',
                              'got ' + self.ff_type + ' instead')
@@ -343,7 +347,7 @@ class TorchMD_Sampler(Sampler):
         # Create the system
         system = System(mol.numAtoms, nreplicas=self.replicas, precision = self.precision, device=self.device)
         system.set_positions(mol.coords)
-        system.set_box(mol.box)
+        system.set_box(np.tile(mol.box, self.replicas))
         system.set_velocities(maxwell_boltzmann(forces.par.masses, T=self.temperature, replicas=self.replicas))
         
         integrator = Integrator(system, forces, self.timestep, gamma = self.langevin_gamma, 

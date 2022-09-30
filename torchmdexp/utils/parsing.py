@@ -134,7 +134,6 @@ def get_args():
     parser.add_argument('--ff_type', type=str, choices=['file', 'full_pseudo_receptor'], default='file', help='Type of forcefield to use')
     parser.add_argument('--ff_pseudo_scale', type=float, default=1, help='Value that divides pseudobond strength')
     parser.add_argument('--ff_full_scale', type=float, default=1, help='Value that divides all bonds strength')
-    parser.add_argument('--ff_save', type=str, default=None, help='Where to save the forcefield if required')
     parser.add_argument('--forceterms', nargs='+', default=[], help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--multichain_emb', type=bool, default=False, help='Determines whether to use unique embeddings for the ligand or not')
 

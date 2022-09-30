@@ -160,7 +160,7 @@ class Updater(Worker):
             losses_dict['val_loss_2'] = mean(losses_dict['val_loss_2']) if losses_dict['val_loss_2'][0] else None
             
         info.update(losses_dict)
-        
+
         return info
 
     def sim_step(self, steps, output_period):

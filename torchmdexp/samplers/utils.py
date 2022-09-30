@@ -15,16 +15,16 @@ def get_embeddings(mol, device, replicas, multi_chain=False):
     AA2INT = {'ALA':1, 'GLY':2, 'PHE':3, 'TYR':4, 'ASP':5, 'GLU':6, 'TRP':7,'PRO':8,
               'ASN':9, 'GLN':10, 'HIS':11, 'HSD':11, 'HSE':11, 'SER':12,'THR':13,
               'VAL':14, 'MET':15, 'CYS':16, 'NLE':17, 'ARG':18,'LYS':19, 'LEU':20,
-              'ILE':21, 'MAG': 22,
+              'ILE':21,
              }
     if not multi_chain:
-        emb = np.array([AA2INT[x] for x in mol.resname if x != 'MAG'])    
+        emb = np.array([AA2INT[x] for x in mol.resname])    
     
     # Same as without multichain but add 22 to ligand chain to get different embeddings
     else:
-        receptor_chain, ligand_chain = get_chains(mol, full=False)
-        emb = np.array([AA2INT[x] if (x != 'MAG' and ch == receptor_chain) \
-            else AA2INT[x] + 22 for x, ch in zip(mol.resname, mol.chain)])
+        emb = np.array([AA2INT[x] if (ch.startswith('R')) else AA2INT[x] + 21 \
+                                            for x, ch in zip(mol.resname, mol.chain)])
+
     emb = torch.tensor(emb, device = device).repeat(replicas, 1)
     return emb
     

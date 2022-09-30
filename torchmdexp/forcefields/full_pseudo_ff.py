@@ -5,24 +5,23 @@ import yaml
 from torchmdexp.datasets.utils import CA_MAP, pdb2full_CA, pdb2psf_CA
 import os
 
-class FullPseudoFF():
-    
-    def create(self, mols, ff, pseudo_scale=1, full_scale=1, save_path=None):
-        """Returns a forcefield whith full pseudobonds in receptor.
+class FullPseudoFF:
+
+    def create(self, mols, ff, pseudo_scale=1, full_scale=1, save_dir=None):
+        """Returns a forcefield whith full pseudobonds in receptor. It also saves
+        it in case `save_dir` is not `None`.
         Call with `FullForcefield().create(...)`
 
         Args:
-            mols (list): List of molecules for the forcefield
+            mols (list): List of molecules for the forcefield.
             ff (str | ForceField): Path or ForceField object
             pseudo_scale (float, optional): Divide pseudobonds by value. Defaults to 1.
             full_scale (float, optional): Divide all bonds by value. Defaults to 1.
-            save_path (str): Where to save the new forcefield. If None (default) don't save.
+            save_dir (str): Where to save the new forcefield. If None (default) don't save.
 
         Returns:
             ForceField: Torchmd forcefield class.
         """
-        if len(mols) > 1:
-            raise NotImplementedError('Now working with just one molecule.')
         
         if not isinstance(ff, _ForceFieldBase):
             ff = ForceField.create(mols[0], ff)
@@ -38,15 +37,17 @@ class FullPseudoFF():
         masses = {}
         charges = {}
         lj = {}
+        used = {}
         for mol_idx, mol in enumerate(mols):
+            
+            if (mol.numAtoms, mol.viewname) in used:
+                pdb2full_CA(mol)
+                mol.atomtype = used[(mol.numAtoms, mol.viewname)]
+                continue
 
             # In case mol has many replicas, use just the first one
             coords = mol.coords
             mol.coords = mol.coords[:,:,0,np.newaxis] if mol.coords.shape[-1] > 1 else mol.coords
-            
-            # ATOMTYPES
-            mol_atom_types = [f'{mol_idx+1}{i:0>4d}' for i in range(mol.numAtoms)]
-            atom_types += mol_atom_types
             
             # BONDS        
             # Get real bonds
@@ -55,7 +56,13 @@ class FullPseudoFF():
             
             # Get new topology with pseudobonds
             pdb2full_CA(mol)
-            
+
+            # ATOMTYPES
+            mol_atom_types = [f'{mol_idx+1}{i:0>4d}' for i in range(mol.numAtoms)]
+            atom_types += mol_atom_types
+            mol.atomtype = np.array(mol_atom_types)
+            used[(mol.numAtoms, mol.viewname)] = mol.atomtype
+
             # Create bonds and pseudobonds
             for b in mol.bonds.tolist():
                 if b in real_bonds:
@@ -82,13 +89,14 @@ class FullPseudoFF():
         params['lj'] = lj
 
         # Create forcefield instance for torchmd. Save the file if required.
-        if save_path:
-            with open(save_path, 'w') as f:
+        if save_dir is not None:
+            ff_path = os.path.join(save_dir, 'forcefield.yaml')
+            with open(ff_path, 'w') as f:
                 yaml.dump(params, f)
             try:
-                ff = ForceField.create(mol, save_path)
+                ff = ForceField.create(mol, ff_path)
             except:
-                os.remove(save_path)
+                os.remove(ff_path)
                 traceback.print_exc()
                 quit()
         else:
