@@ -131,24 +131,18 @@ def main():
         # Train step
         b = 0
         for i in range(0, train_set_size, sim_batch_size):
-<<<<<<< HEAD
-            batch = copy.deepcopy(train_set[ i : sim_batch_size + i])
-            
-            if args.add_noise == True:
-                batch.add_gaussian_noise(std=0.01)
-                
-=======
+
             b += 1
             start = time.perf_counter()
             batch = copy.copy(train_set[ i : sim_batch_size + i])
             if args.add_noise == True:
                 batch.add_gaussian_noise(std=0.01)
 
->>>>>>> b862f3a7ba6c80c63636c1dfda84a24f201c6de7
             learner.set_batch(batch)
             learner.step()
             end = time.perf_counter()
             print(f'Epoch {b} ... time per epoch: ', end-start)
+            
         # Val step
         epoch += 1
         if len(val_set) > 0:
