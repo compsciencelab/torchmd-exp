@@ -56,11 +56,17 @@ def main():
     protein_factory.set_dataset_size(100)
 
     train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
-    dataset_names = protein_factory.get_names()
+    #dataset_names = protein_factory.get_names()
+    dataset_names = []
+    
+    # Load test molecules
+    protein_factory.load_dataset(args.test_set)
+    test_set, _ = protein_factory.train_val_split(val_size = 0.0)
     
     train_set_size = len(train_set)
     val_set_size = len(val_set)
-
+    test_set_size = len(test_set)
+        
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
                                                              replicas=args.replicas, cutoff=args.cutoff, rfa=args.rfa,
@@ -117,7 +123,7 @@ def main():
 
     # 4. Define Learner
     learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir,
-                      keys = ('epoch', 'level', 'steps', 'train_loss', 'val_loss', 'loss_1', 'loss_2', 'val_loss_1', 'val_loss_2'))    
+                      keys = args.keys)    
 
     import time
     # 5. Define epoch and Levels
@@ -128,7 +134,7 @@ def main():
 
         train_set.shuffle()
                 
-        # Train step
+        # TRAIN STEP
         b = 0
         for i in range(0, train_set_size, sim_batch_size):
 
@@ -141,9 +147,9 @@ def main():
             learner.set_batch(batch)
             learner.step()
             end = time.perf_counter()
-            print(f'Epoch {b} ... time per epoch: ', end-start)
+            print(f'Batch {b} ... time per batch: ', end-start)
             
-        # Val step
+        # VAL STEP
         epoch += 1
         if len(val_set) > 0:
             if (epoch == 1 or (epoch % args.val_freq) == 0):
@@ -152,6 +158,20 @@ def main():
                     learner.set_batch(batch)
                     learner.step(val=True)
 
+        # TEST STEP
+        if len(test_set) > 0:
+            if (epoch == 1 or (epoch % args.test_freq) == 0):
+                test_set.shuffle()
+                test_output = steps // 3
+                learner.set_output_period(test_output)
+                learner.set_steps(test_output * 3)
+                for i in range(0, test_set_size, sim_batch_size):
+                    batch = test_set[ i : sim_batch_size + i]
+                    learner.set_batch(batch)
+                    learner.step(val=True, mode='test')
+                learner.set_output_period(output_period)
+                learner.set_steps(steps)
+        
         learner.compute_epoch_stats()
         learner.write_row()
         
@@ -192,11 +212,13 @@ def get_args(arguments=None):
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--lr-decay', default=1, type=float, help='learning rate decay')
     parser.add_argument('--min-lr', default=1e-4, type=float, help='minimum value of lr')
-    parser.add_argument('--val-freq', default=50, type=float, help='After how many epochs do a validation simulation')
+    parser.add_argument('--val-freq', default=1, type=float, help='After how many epochs do a validation simulation')
+    parser.add_argument('--test-freq', default=10, type=float, help='After how many epochs do a test simulation')
     parser.add_argument('--precision', type=int, default=32, choices=[16, 32], help='Floating point precision')
     parser.add_argument('--log-dir', '-l', default='/trainings', help='log file')
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
-    
+    parser.add_argument('--keys', type=tuple, default=('epoch', 'steps', 'train_loss', 'val_loss'), help='Keys that you want to save in the montior')
+
     # model architecture
     parser.add_argument('--model', type=str, default='graph-network', choices=models.__all__, help='Which model to train')
     parser.add_argument('--output-model', type=str, default='Scalar', choices=output_modules.__all__, help='The type of output model')
@@ -223,6 +245,7 @@ def get_args(arguments=None):
     # dataset specific
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
     parser.add_argument('--dataset',  default=None, help='File with the dataset')
+    parser.add_argument('--test_set',  default=None, help='File with the test dataset')
     parser.add_argument('--val_size',  default=0.0,type=float, help='Proportion of the dataset that goes to validation.')
 
     # Torchmdexp specific
@@ -256,6 +279,7 @@ def get_args(arguments=None):
     parser.add_argument('--loss_fn', type=str, default='margin_ranking', help='Type of loss fn')
     parser.add_argument('--margin', type=float, default=0.0, help='Margin for margin ranking losss')
     parser.add_argument('--add-noise', type=bool, default=False, help='Add noise to input coords or not')
+    
 
 
     
