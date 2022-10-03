@@ -83,7 +83,7 @@ class ProteinFactory:
                 mol = Molecule(init_state)
                 
             if topo_dict:
-                    mol = pdb2psf_CA(mol, **topo_dict)  
+                mol = pdb2psf_CA(mol, **topo_dict)  
             
             if os.path.isfile(coords) and os.path.isfile(delta):
                 x, y = np.load(coords), np.load(delta)
