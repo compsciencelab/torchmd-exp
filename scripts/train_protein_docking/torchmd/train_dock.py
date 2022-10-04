@@ -12,8 +12,11 @@ from torchmdexp.nnp.module import NNP
 from torchmdexp.utils.parsing import get_args
 import ray
 import os
+import numpy as np
 
 def main():
+    np.seterr(over='warn')
+
     args = get_args()
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -136,14 +139,16 @@ def main():
         
         # Update level
         train_set = levels_factory.level(level)
-        print(f"\nIn level {level}")
-        print(f"Using: {train_set.get('names')}")
             
         # Set sim batch size:
         sim_batch_size = args.sim_batch_size
         while sim_batch_size > len(train_set):
             sim_batch_size //= 2
             
+        print(f"\nIn level {level}")
+        print(f"Using: {train_set.get('names')}")
+        print(f"Simulation batch size: {sim_batch_size}")
+
         while not lvl_up:
             
             epoch += 1
@@ -153,6 +158,7 @@ def main():
             for i in range(0, len(train_set.get('names')), sim_batch_size):
                 # Get batch
                 batch = train_set[i:sim_batch_size+i]
+                batch.noisy_replicas(args.replicas, std=0.1)
                 learner.set_batch(batch)
                 learner.step()
 
