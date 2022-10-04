@@ -65,11 +65,6 @@ class Learner:
         # Update step
         info = self.update_worker.step(self.steps, self.output_period, val)
         
-        if 'level' in self.keys:
-            self.results_dict['level'] = self.level
-        if 'steps' in self.keys:
-            self.results_dict['steps'] = self.steps
-        
         if val == True:
             if mode == 'val':
                 self.val_losses.append(info['val_loss'])
@@ -132,6 +127,10 @@ class Learner:
         self.epoch += 1
         self.results_dict['epoch'] = self.epoch
 
+        if 'level' in self.keys:
+            self.results_dict['level'] = self.level
+        if 'steps' in self.keys:
+            self.results_dict['steps'] = self.steps
         
         # Compute val loss
         if 'val_loss' in self.keys:
