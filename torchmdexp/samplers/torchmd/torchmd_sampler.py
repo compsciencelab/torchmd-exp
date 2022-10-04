@@ -264,11 +264,24 @@ class TorchMD_Sampler(Sampler):
         sample_dict['y'] = self.y
         
         # Run the simulation
-        for i in iterator:
-            Ekin, Epot, T = integrator.step(niter=output_period)
-            states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
+        error = None
+        try: 
+            for i in iterator:
+                Ekin, Epot, T = integrator.step(niter=output_period)
+                states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
+        except Exception as err:
+            print(f'Found error in iteration {i}')
+            error = err
 
         sample_dict = self._split_states(states, sample_dict)          
+
+        if error is not None:
+            for name, mol, state in zip(sample_dict['names'], sample_dict['mols'], sample_dict['states']):
+                mol.coords = np.moveaxis(state.numpy(), 0, 2)
+                mol.write(f'{name}.pdb')
+                mol.write(f'{name}.xtc')
+            raise RuntimeError(f'{error}')
+
         self.sim_dict.update(sample_dict)
         return self.sim_dict
 
