@@ -162,11 +162,11 @@ def main():
         if len(test_set) > 0:
             if (epoch == 1 or (epoch % args.test_freq) == 0):
                 test_set.shuffle()
-                test_output = steps // 3
+                test_output = steps // 2
                 learner.set_output_period(test_output)
-                learner.set_steps(test_output * 3)
+                learner.set_steps(test_output * 2)
                 for i in range(0, test_set_size, sim_batch_size):
-                    batch = test_set[ i : sim_batch_size + i]
+                    batch = test_set[ i //2 : (sim_batch_size + i) // 2]
                     learner.set_batch(batch)
                     learner.step(val=True, mode='test')
                 learner.set_output_period(output_period)
