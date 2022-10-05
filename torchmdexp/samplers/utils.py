@@ -81,11 +81,10 @@ def create_system(molecules, dist = 200):
     """
     prev_div = 0 
     axis = 0
-    move = np.array([0, 0, 0,])
 
     for idx, mol in enumerate(molecules):
+        move = np.array([0, 0, 0,])
         if idx == 0:
-            mol.dropFrames(keep=0)
             batch = copy.deepcopy(mol)
         else:
             div = idx // 6
@@ -98,10 +97,7 @@ def create_system(molecules, dist = 200):
                 move[axis] = -dist + -dist * div
                 axis += 1
 
-            mol.dropFrames(keep=0)
-
-            mol.moveBy(move)
-            move = np.array([0, 0, 0])
+            mol.coords = mol.coords + move[:, None]
 
             ml = len(batch.coords)
             batch.append(mol) # join molecules
