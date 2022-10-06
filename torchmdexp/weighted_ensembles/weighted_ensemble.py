@@ -161,6 +161,8 @@ class WeightedEnsemble:
         states = states.to(self.device)
 
         obs = torch.tensor([self.metric(state, ground_truths, mols) for state in states], device = self.device, dtype = self.precision)
+
+        obs = torch.where(obs > 10e6, torch.tensor(10e6, device = self.device, dtype = self.precision), obs)
         avg_metric = torch.mean(obs).detach().item()
 
         w_ensemble = torch.multiply(weights, obs).sum(0) 

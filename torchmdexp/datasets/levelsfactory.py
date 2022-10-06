@@ -24,7 +24,6 @@ class LevelsFactory:
             
             params = {'names' : [],
                       'molecules': [],
-                      'init_states': [],
                       'ground_truths': [],
                       'lengths': []}
             
@@ -43,7 +42,6 @@ class LevelsFactory:
 
                     params['names'].append(f'{name}_{level}')
                     params['molecules'].append(mol)
-                    params['init_states'].append(nat_coords)
                     if level == 0:
                         params['ground_truths'].append(nat_coords)
                     else:

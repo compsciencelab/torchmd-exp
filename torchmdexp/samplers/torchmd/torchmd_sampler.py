@@ -269,6 +269,7 @@ class TorchMD_Sampler(Sampler):
             states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
 
         sample_dict = self._split_states(states, sample_dict)          
+
         self.sim_dict.update(sample_dict)
         return self.sim_dict
 
