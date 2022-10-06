@@ -84,7 +84,8 @@ def get_args():
     parser.add_argument('--precision', type=int, default=32, choices=[16, 32], help='Floating point precision')
     parser.add_argument('--log-dir', '-l', default='/trainings', help='log file')
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
-    
+    parser.add_argument('--keys', type=tuple, default=('epoch', 'steps', 'train_loss', 'val_loss'), help='Keys that you want to save in the montior')
+
     # model architecture
     parser.add_argument('--model', type=str, default='graph-network', choices=models.__all__, help='Which model to train')
     parser.add_argument('--output-model', type=str, default='Scalar', choices=output_modules.__all__, help='The type of output model')
@@ -113,6 +114,7 @@ def get_args():
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
     parser.add_argument('--thresh-lvlup', default=5.0, type=float, help='Loss value to get before leveling up')
     parser.add_argument('--dataset',  default=None, help='File with the dataset')
+    parser.add_argument('--test_set',  default=None, help='File with the test dataset')
     parser.add_argument('--val_size',  default=0.0,type=float, help='Proportion of the dataset that goes to validation.')
 
     # Torchmdexp specific
@@ -149,6 +151,7 @@ def get_args():
     parser.add_argument('--exclusions', default=('bonds', 'angles', '1-4'), type=tuple, help='exclusions for the LJ or repulsionCG term')
     parser.add_argument('--loss_fn', type=str, default='margin_ranking', help='Type of loss fn')
     parser.add_argument('--margin', type=float, default=1.0, help='Margin for margin ranking losss')
+    parser.add_argument('--add-noise', type=bool, default=False, help='Add noise to input coords or not')
 
 
     args = parser.parse_args()
