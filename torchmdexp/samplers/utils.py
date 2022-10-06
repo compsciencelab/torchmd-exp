@@ -97,9 +97,9 @@ def create_system(molecules, dist = 200):
                 move[axis] = -dist + -dist * div
                 axis += 1
             
-            mol.dropFrames(keep=0)
-            mol.moveBy(move)
-            #mol.coords = mol.coords + move[:, None]
+            #mol.dropFrames(keep=0)
+            #mol.moveBy(move)
+            mol.coords = mol.coords + move[:, None]
 
             ml = len(batch.coords)
             batch.append(mol) # join molecules
