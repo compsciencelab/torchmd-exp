@@ -150,7 +150,7 @@ def get_args():
     parser.add_argument('--reduce-op', type=str, default='add', choices=['add', 'mean'], help='Reduce operation to apply to atomic predictions')
     parser.add_argument('--exclusions', default=('bonds', 'angles', '1-4'), type=tuple, help='exclusions for the LJ or repulsionCG term')
     parser.add_argument('--loss_fn', type=str, default='margin_ranking', help='Type of loss fn')
-    parser.add_argument('--margin', type=float, default=1.0, help='Margin for margin ranking losss')
+    parser.add_argument('--margin', type=float, default=0.0, help='Margin for margin ranking losss')
     parser.add_argument('--add-noise', type=bool, default=False, help='Add noise to input coords or not')
 
 

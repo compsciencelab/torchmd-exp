@@ -131,8 +131,9 @@ def main():
     epoch = 0        
     max_loss = args.max_loss
     stop = False
+    
     while stop == False:
-
+        
         train_set.shuffle()
                 
         # TRAIN STEP
@@ -143,6 +144,7 @@ def main():
             start = time.perf_counter()
             batch = copy.copy(train_set[ i : sim_batch_size + i])
             if args.add_noise == True:
+                print('noise')
                 batch.add_gaussian_noise(std=0.01)
 
             learner.set_batch(batch)

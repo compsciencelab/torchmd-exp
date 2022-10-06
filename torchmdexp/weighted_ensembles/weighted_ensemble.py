@@ -164,9 +164,9 @@ class WeightedEnsemble:
 
         obs = torch.where(obs > 10e6, torch.tensor(10e6, device = self.device, dtype = self.precision), obs)
         avg_metric = torch.mean(obs).detach().item()
-
+        
         w_ensemble = torch.multiply(weights, obs).sum(0) 
-
+        
         return w_ensemble, avg_metric
     
 
