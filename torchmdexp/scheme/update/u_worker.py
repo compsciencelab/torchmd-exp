@@ -136,7 +136,7 @@ class Updater(Worker):
         
         # Reweighting step
         train_losses, val_losses, losses_dict = self.reweight_step(sim_dict, losses_dict, sys_names, nnp_prime, val=val)
-
+        
         # Set weights
         weights = self.local_we_worker.get_weights()
         if self.sim_execution == "centralised":
@@ -209,18 +209,28 @@ class Updater(Worker):
                     system_result = {key:sim_dict[key][idx] if sim_dict[key] else None for key in sim_dict.keys()}
 
                     # Compute Train loss
-                    if val == False: 
-                        grads, loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val)
-                        grads_to_average.append(grads)
-                        train_losses.append(loss)
-                    
-                    if val == True:
-                        _ , loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val)
-                        val_losses.append(loss)
-                    
+                    try: 
+                        if val == False: 
+                            grads, loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val) 
+                            grads_to_average.append(grads)
+                            train_losses.append(loss)
+
+                        if val == True:
+                            _ , loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val)
+                            val_losses.append(loss)
+                            
+                    except RuntimeError as e:
+                        if 'out of memory' in str(e):
+                            print('Ran out of memory! Skipping batch')
+                            for p in self.local_we_worker.nnp.parameters():
+                                if p.grad is not None:
+                                    del p.grad
+                            torch.cuda.empty_cache()
+                            continue
+
                     # Save losses and Metric Values
                     losses_dict[s] = values_dict['avg_metric']
-                    
+
                     if val == False:
                         losses_dict['loss_1'].append(values_dict['loss_1'])
                         if 'loss_2' in values_dict:
@@ -229,7 +239,7 @@ class Updater(Worker):
                         losses_dict['val_loss_1'].append(values_dict['val_loss_1'])
                         if 'val_loss_2' in values_dict:
                             losses_dict['val_loss_2'].append(values_dict['val_loss_2'])
-                    
+                                
                     torch.cuda.empty_cache()
                 
                 # Optim step
