@@ -13,6 +13,7 @@ from torchmdexp.utils.parsing import get_args
 import ray
 import os
 import numpy as np
+import random
 
 def main():
     np.seterr(over='raise')
@@ -22,6 +23,8 @@ def main():
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
+    np.random.seed(args.seed)
+    random.seed(args.seed)
     
     # Start Ray.
     ray.init(num_cpus=2)
