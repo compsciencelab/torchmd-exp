@@ -84,7 +84,11 @@ class ProteinDataset(Dataset):
     
     def shuffle(self):
         temp = list(zip(*[self.dataset[key] for key in self.dataset.keys()]))
-        random.shuffle(temp)
+        #random.shuffle(temp)
+        
+        # shuffle it with pytorch
+        temp = [temp[i] for i in torch.randperm(len(temp))]
+
         keys = list(self.dataset.keys())
         for idx, rdm_list in enumerate(zip(*temp)):
             self.dataset[keys[idx]] = list(rdm_list)
@@ -93,7 +97,7 @@ class ProteinDataset(Dataset):
         
         noisy_molecules = []
         for mol in self.dataset.get('molecules'):
-            noise = np.random.normal(mu, std, size = mol.coords.shape).astype(mol.coords.dtype)
+            noise = np.array(torch.normal(mu, std, size=mol.coords.shape)).astype(mol.coords.dtype)
             mol.coords = mol.coords + sigma * noise
             noisy_molecules.append(mol)
         self.dataset['molecules'] = noisy_molecules
@@ -107,5 +111,5 @@ class ProteinDataset(Dataset):
             natoms = mol.coords.shape[0]
             if mol.coords.shape[-1] != replicas: mol.coords = np.tile(mol.coords[:,:,0,np.newaxis], (1, 1, replicas))
             for replica in range(1, replicas):
-                noise = np.random.normal(mu, std, size = (natoms, 3)).astype(mol.coords.dtype)
+                noise = np.array(torch.normal(mu, std, size = (natoms, 3))).astype(mol.coords.dtype)
                 mol.coords[:,:,replica] = initial_coords + np.where(np.char.startswith(mol.chain, chain)[:,np.newaxis], noise, 0)

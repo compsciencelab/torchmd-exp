@@ -133,7 +133,6 @@ class WeightedEnsemble:
         # Compute external Epot and create a new eternal Epot detached 
         U_ext, U_ext_hat = self._extEpot(states, embeddings, nnp_prime, mode="train")
         #U_ext_hat = nnp_prime.detach()
-        
         U_arg = -torch.divide(torch.subtract(U_ext, U_ext_hat), self.T*BOLTZMAN)
 
         # Avoid very large exponential arguments because they can produce infinities

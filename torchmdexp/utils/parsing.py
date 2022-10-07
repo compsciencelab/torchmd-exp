@@ -124,6 +124,7 @@ def get_args():
     parser.add_argument('--replicas', type=int, default=1, help='Number of different replicas to run')
     parser.add_argument('--switch_dist', default=None, type=float, help='Switching distance for LJ')
     parser.add_argument('--temperature',  default=350,type=float, help='Assign velocity from initial temperature in K')
+    parser.add_argument('--rw_temperature',  default=350,type=float, help='Reweighting Temperature in K')
     parser.add_argument('--force-precision', default='single', type=str, help='LJ/Elec/Bond cutoff')
     parser.add_argument('--timestep', default=1, type=float, help='Timestep in fs')
     parser.add_argument('--langevin_gamma',  default=1,type=float, help='Langevin relaxation ps^-1')
