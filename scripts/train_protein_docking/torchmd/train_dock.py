@@ -15,7 +15,7 @@ import os
 import numpy as np
 
 def main():
-    np.seterr(over='warn')
+    np.seterr(over='raise')
 
     args = get_args()
     torch.manual_seed(args.seed)
@@ -117,7 +117,7 @@ def main():
 
     # 4. Define Learner
     learner = Learner(scheme, steps, output_period, train_names=train_names, log_dir=args.log_dir,
-                      keys = ('epoch', 'level', 'steps', 'train_loss', 'val_loss', 'loss_1', 'loss_2', 'val_loss_1', 'val_loss_2'))    
+                      keys = args.keys)    
 
     
     # 5. Define epoch and Levels
@@ -158,9 +158,16 @@ def main():
             for i in range(0, len(train_set.get('names')), sim_batch_size):
                 # Get batch
                 batch = train_set[i:sim_batch_size+i]
-                batch.noisy_replicas(args.replicas, std=0.1)
-                learner.set_batch(batch)
-                learner.step()
+                step_error = True
+                while step_error:
+                    step_error = False
+                    batch.noisy_replicas(args.replicas, std=0.1)
+                    learner.set_batch(batch)
+                    try:
+                        learner.step()
+                    except Exception as err:
+                        step_error = True
+                        print(f'\nRetrying epoch {epoch} because of error: {err}')
 
             # Get training process information
             learner.compute_epoch_stats()
