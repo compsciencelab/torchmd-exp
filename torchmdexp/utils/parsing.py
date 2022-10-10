@@ -111,6 +111,7 @@ def get_args():
 
     # dataset specific
     parser.add_argument('--num-levels', default=None, help='How many levels to use including the 0th level')
+    parser.add_argument('--levels-from', default='traj', choices=['traj', 'files'], help='Get the levels from files or from a trajectory of level 0')
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
     parser.add_argument('--thresh-lvlup', default=5.0, type=float, help='Loss value to get before leveling up')
     parser.add_argument('--dataset',  default=None, help='File with the dataset')
