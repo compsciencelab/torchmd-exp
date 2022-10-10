@@ -1,5 +1,6 @@
 import torch
 from torchmdexp.datasets.levelsfactory import LevelsFactory
+from torchmdexp.datasets.utils import pdb2psf_CA
 from torchmdexp.forcefields.full_pseudo_ff import FullPseudoFF
 from torchmdexp.samplers.torchmd.torchmd_sampler import TorchMD_Sampler
 from torchmdexp.samplers.utils import moleculekit_system_factory
@@ -47,18 +48,29 @@ def main():
     input_file.close()
 
     # Load training molecules
-    levels_factory = LevelsFactory(args.dataset, args.levels_dir, args.num_levels, out_dir=args.log_dir)
+    levels_factory = LevelsFactory(args.dataset, args.levels_dir, args.levels_from, args.num_levels, out_dir=args.log_dir)
     train_names = levels_factory.get_names()
-
     all_molecules = levels_factory.get_mols()
 
     # Create the unique forcefield to be used
     if args.ff_type == 'full_pseudo_receptor':
+        print('Creating forcefield')
         FullPseudoFF().create(
             all_molecules,
             args.forcefield, args.ff_pseudo_scale, args.ff_full_scale, 
             args.log_dir
         )
+
+    # Get levels sampling from trajectories
+    levels_factory.trajSample(args)
+
+    levels_out = os.path.join(args.log_dir, 'levels')
+    os.makedirs(levels_out, exist_ok=True)
+    alls = levels_factory.level(args.num_levels)
+    for name, mol in zip(alls.get('names'), alls.get('molecules')):
+        mol_copy = mol.copy()
+        pdb2psf_CA(mol_copy)
+        mol_copy.write(os.path.join(levels_out, f'{name}.pdb'))
 
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     
