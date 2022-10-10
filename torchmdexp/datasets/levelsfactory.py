@@ -131,11 +131,11 @@ class LevelsFactory:
             name = ''.join([l for l in name][:-1])
             
             for lvl, (idx, _) in enumerate(difficulty[:(self.num_levels-1)*nreplicas:nreplicas], start = 1):
-                # import ipdb; ipdb.set_trace()
                 mol.coords = np.moveaxis(samples[idx, np.newaxis].numpy(), 0, 2)
                 self.dataset[lvl]['molecules'].append(mol.copy())
                 
                 self.dataset[lvl]['names'].append(f'{name}{lvl}')
+                self.names.append(f'{name}{lvl}')
                 self.dataset[lvl]['ground_truths'].append(self.dataset[0]['ground_truths'][mol_idx])
                 self.dataset[lvl]['lengths'].append(self.dataset[0]['lengths'][mol_idx])
 

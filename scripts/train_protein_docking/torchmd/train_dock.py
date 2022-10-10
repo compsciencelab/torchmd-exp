@@ -49,7 +49,6 @@ def main():
 
     # Load training molecules
     levels_factory = LevelsFactory(args.dataset, args.levels_dir, args.levels_from, args.num_levels, out_dir=args.log_dir)
-    train_names = levels_factory.get_names()
     all_molecules = levels_factory.get_mols()
 
     # Create the unique forcefield to be used
@@ -63,6 +62,7 @@ def main():
 
     # Get levels sampling from trajectories
     levels_factory.trajSample(args)
+    train_names = levels_factory.get_names()
 
     levels_out = os.path.join(args.log_dir, 'levels')
     os.makedirs(levels_out, exist_ok=True)
