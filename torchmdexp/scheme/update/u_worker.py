@@ -197,9 +197,10 @@ class Updater(Worker):
                 
                 if self.batch_size > len(tmp_names) and self.batch_size < num_systems:
                     n_to_add = self.batch_size - len(tmp_names)
-                    n_to_sample = len(sys_names) - n_to_add                    
-                    tmp_names += random.sample(sys_names[:n_to_sample], n_to_add)
-                    
+                    n_to_sample = len(sys_names) - n_to_add
+
+                    tmp_names += [sys_names[:n_to_sample][i] for i in torch.randperm(n_to_add)]
+                                        
                 batch_names, tmp_names = tmp_names[:self.batch_size], tmp_names[self.batch_size:]
                 
                 grads_to_average = []

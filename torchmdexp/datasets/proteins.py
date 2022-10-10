@@ -6,7 +6,6 @@ import torch
 import numpy as np
 from .utils import CA_MAP, CACB_MAP, pdb2psf_CA
 import copy
-import random
 from operator import itemgetter 
 
 class ProteinDataset(Dataset):
