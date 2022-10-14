@@ -1,8 +1,6 @@
 import torch
-from statistics import mean
-import numpy as np
-import time
-from torch.nn.functional import mse_loss, l1_loss
+import logging
+from torch.nn.functional import l1_loss
 
 BOLTZMAN = 0.001987191
 
@@ -32,6 +30,7 @@ class WeightedEnsemble:
         self.device = device
         self.precision = precision
         self.energy_weight = energy_weight
+        self.logger = logging.getLogger(__name__)
         
         # ------------------- Neural Network Potential and Optimizer -----------------
         self.nnp = nnp
@@ -230,6 +229,8 @@ class WeightedEnsemble:
             l1_loss(y, forces)/(3*N)        
     
     def compute_gradients(self, names, mols, ground_truths, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
+        
+        self.logger.debug(f'Computing loss and gradient for {names}')
         if val == False:
             self.optimizer.zero_grad()
             loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
@@ -250,6 +251,7 @@ class WeightedEnsemble:
             loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
             loss = loss.detach()
 
+        self.logger.debug(f'loss = {loss} {values_dict}')
         return grads, loss.item(), values_dict
         
     

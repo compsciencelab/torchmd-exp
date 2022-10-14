@@ -1,6 +1,6 @@
 from torchmdexp.utils.logger import LogWriter
-import torch
 from statistics import mean
+import logging
 
 class Learner:
     """
@@ -20,6 +20,7 @@ class Learner:
         self.log_dir = log_dir
         self.update_worker = scheme.update_worker()
         self.keys = keys
+        self.logger = logging.getLogger(__name__)
         
         # Counters and metrics
         self.steps = steps
@@ -57,13 +58,17 @@ class Learner:
         #self.results_dict.update(total_dict)
         
         keys = tuple([key for key in self.results_dict.keys()])
-        self.logger = LogWriter(self.log_dir,keys=keys)
+        self.monitor = LogWriter(self.log_dir,keys=keys)
 
     def step(self, val=False, mode='val'):
         """ Takes an optimization update step """
         
+        self.logger.debug(f'Starting step. Epoch {self.epoch+1}')
+        
         # Update step
         info = self.update_worker.step(self.steps, self.output_period, val)
+        
+        self.logger.debug(f'Finished step. Adding results to dictionaries.')
         
         if val == True:
             if mode == 'val':
@@ -85,7 +90,7 @@ class Learner:
     def level_up(self):
         """ Increases level of difficulty """
         
-        #self.update_worker.set_init_state(next_level)
+        self.logger.debug(f'Leveling up')
         self.level += 1
     
     def set_init_state(self, init_state):
@@ -108,6 +113,8 @@ class Learner:
         self.output_period = output_period
     
     def save_model(self):
+        
+        self.logger.debug(f'Saving model at epoch {self.epoch}')
         
         if self.val_loss is not None:
             path = f'{self.log_dir}/epoch={self.epoch}-train_loss={self.train_loss:.4f}-val_loss={self.val_loss:.4f}.ckpt'
@@ -169,8 +176,8 @@ class Learner:
         self.val_loss_2 = []
         
     def write_row(self):
-        if self.logger:
-            self.logger.write_row(self.results_dict)
+        if self.monitor:
+            self.monitor.write_row(self.results_dict)
 
     def get_val_loss(self):
         return self.val_loss
