@@ -83,6 +83,7 @@ def get_args():
     parser.add_argument('--test-freq', default=50, type=float, help='After how many epochs do a test simulation')
     parser.add_argument('--precision', type=int, default=32, choices=[16, 32], help='Floating point precision')
     parser.add_argument('--log-dir', '-l', default='/trainings', help='log file')
+    parser.add_argument('--debug-level', type=str, default='info', help='Debug level used in file.')
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
     parser.add_argument('--keys', type=tuple, default=('epoch', 'steps', 'train_loss', 'val_loss'), help='Keys that you want to save in the montior')
 

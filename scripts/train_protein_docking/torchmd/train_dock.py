@@ -11,12 +11,15 @@ from torchmdexp.metrics.losses import Losses
 from torchmdexp.metrics.ligand_rmsd import ligand_rmsd
 from torchmdexp.nnp.module import NNP
 from torchmdexp.utils.parsing import get_args
+from torchmdexp.utils.logger import init_logger
 import ray
 import os
 import numpy as np
 import random
 
+
 def main():
+    
     np.seterr(over='raise')
 
     args = get_args()
@@ -26,6 +29,9 @@ def main():
     torch.backends.cudnn.allow_tf32 = False
     np.random.seed(args.seed)
     random.seed(args.seed)
+    
+    logger = init_logger(args.log_dir, 'docking', args.debug_level)
+    logger.info('STARTING NEW TRAINING')
     
     # Start Ray.
     ray.init(num_cpus=2)
@@ -53,7 +59,7 @@ def main():
 
     # Create the unique forcefield to be used
     if args.ff_type == 'full_pseudo_receptor':
-        print('Creating forcefield')
+        logger.info('Creating forcefield')
         FullPseudoFF().create(
             all_molecules,
             args.forcefield, args.ff_pseudo_scale, args.ff_full_scale, 
@@ -61,7 +67,7 @@ def main():
         )
 
     # Get levels sampling from trajectories
-    levels_factory.trajSample(args)
+    if args.levels_from == 'traj': levels_factory.trajSample(args)
     train_names = levels_factory.get_names()
 
     levels_out = os.path.join(args.log_dir, 'levels')
@@ -139,9 +145,7 @@ def main():
     epoch = 0
     num_levels = levels_factory.num_levels
     
-    print( '\n###########################')
-    print(f'Start training for {num_levels} levels')
-    print( '###########################\n')
+    logger.info(f'Start training for {num_levels} levels')
     
     # 6. Train
     for level in range(num_levels):
@@ -160,15 +164,14 @@ def main():
         while sim_batch_size > len(train_set):
             sim_batch_size //= 2
             
-        print(f"\nIn level {level}")
-        print(f"Using: {train_set.get('names')}")
-        print(f"Simulation batch size: {sim_batch_size}")
+        logger.info(f"In level {level}")
+        logger.info(f"Using: {train_set.get('names')}")
+        logger.info(f"Simulation batch size: {sim_batch_size}")
 
         while not lvl_up:
             
             epoch += 1
             epoch_level += 1
-            
             train_set.shuffle() # rdmize systems
             for i in range(0, len(train_set.get('names')), sim_batch_size):
                 # Get batch
@@ -200,9 +203,9 @@ def main():
                 if epoch_level < 10: min_train_loss = args.thresh_lvlup * 1.1
             
             # Check before level up. If last level -> Don't level up. Spend at least 10 epochs per level
-            if min_train_loss < args.thresh_lvlup and level + 1 < args.num_levels and epoch_level >= 10:
-                
-                print(f'\nLeveling up to level {level+1} with training loss: {min_train_loss:.2f} < {args.thresh_lvlup}')
+            if (min_train_loss < args.thresh_lvlup and level + 1 < args.num_levels and epoch_level >= 10) or lvl_up:
+                print(f'\n')
+                logger.info(f'Leveling up to level {level+1} with training loss: {min_train_loss:.2f} < {args.thresh_lvlup}')
                 
                 lvl_up = True
                 learner.level_up()

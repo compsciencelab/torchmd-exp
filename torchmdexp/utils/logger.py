@@ -36,3 +36,39 @@ class LogWriter(object):
             files = glob.glob(os.path.join(log_dir, '*.csv'))
             #for f in files:
             #    os.remove(f)
+
+def init_logger(log_dir, name, file_level='info'):
+    import logging
+    import sys
+    
+    # Create file logger
+    fh = logging.FileHandler(os.path.join(log_dir, 'log.txt'))
+    fh_form = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s: %(message)s')
+    fh.setFormatter(fh_form)
+    file_level = logging.INFO if file_level.lower().strip().startswith('i') else logging.DEBUG
+    fh.setLevel(file_level)
+
+    # Create console logger
+    ch = logging.StreamHandler()
+    ch_form = logging.Formatter('%(name)s - %(levelname)s: %(message)s')
+    ch.setFormatter(ch_form)
+    ch.setLevel(logging.INFO)
+    
+    # Get the root logger and add the handlers of interest
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    logger.removeHandler(logger.handlers[0])
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+
+    # Modify the behavior when getting uncaught exceptions
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+
+        logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+    sys.excepthook = handle_exception
+    
+    return logging.getLogger(name)
