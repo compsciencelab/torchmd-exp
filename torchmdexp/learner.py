@@ -63,12 +63,12 @@ class Learner:
     def step(self, val=False, mode='val'):
         """ Takes an optimization update step """
         
-        self.logger.debug(f'Starting step. Epoch {self.epoch+1}')
+        self.logger.debug(f'Starting batch step. Epoch {self.epoch+1}')
         
         # Update step
         info = self.update_worker.step(self.steps, self.output_period, val)
         
-        self.logger.debug(f'Finished step. Adding results to dictionaries.')
+        self.logger.debug(f'Finished batch step. Adding results to dictionaries.')
         
         if val == True:
             if mode == 'val':
