@@ -67,7 +67,7 @@ def main():
         )
 
     # Get levels sampling from trajectories
-    if args.levels_from == 'traj': levels_factory.trajSample(args)
+    if args.levels_from == 'traj' and args.num_levels > 1: levels_factory.trajSample(args)
     train_names = levels_factory.get_names()
 
     levels_out = os.path.join(args.log_dir, 'levels')
@@ -151,8 +151,8 @@ def main():
     for level in range(num_levels):
         
         assert args.max_loss >= args.thresh_lvlup
-        min_train_loss = args.max_loss
-        min_print = min_train_loss
+        min_val_loss = args.max_loss
+        min_print = min_val_loss
         lvl_up = False
         epoch_level = 0
         
@@ -173,49 +173,72 @@ def main():
             epoch += 1
             epoch_level += 1
             train_set.shuffle() # rdmize systems
+            
+            if epoch == 20:
+                quit()
+            
+            # Train step
             for i in range(0, len(train_set.get('names')), sim_batch_size):
                 # Get batch
                 batch = train_set[i:sim_batch_size+i]
                 step_error = True
                 while step_error:
                     step_error = False
-                    batch.noisy_replicas(args.replicas, std=0.1)
+                    # batch.noisy_replicas(args.replicas, std=0.1)
                     learner.set_batch(batch)
                     try:
-                        learner.step()
+                        learner.step(use_network=False)
                     except Exception as err:
                         step_error = True
-                        print(f'\nRetrying epoch {epoch} because of error: {err}')
+                        print(f'\nRetrying learning in epoch {epoch} because of error: {err}')
+
+            # Test step
+            if (epoch == 1 or (epoch % args.val_freq) == 0):
+                for i in range(0, len(train_set.get('names')), sim_batch_size):
+                    # Get batch
+                    batch = train_set[i:sim_batch_size+i]
+                    step_error = True
+                    while step_error:
+                        step_error = False
+                        # batch.noisy_replicas(args.replicas, std=0.1)
+                        learner.set_batch(batch)
+                        try:
+                            learner.step(val=True, mode='val', use_network=True)
+                        except Exception as err:
+                            step_error = True
+                            print(f'\nRetrying test in epoch {epoch} because of error: {err}')
 
             # Get training process information
             learner.compute_epoch_stats()
             learner.write_row()
             train_loss = learner.get_train_loss()
+            if (epoch == 1 or (epoch % args.val_freq) == 0): val_loss = learner.get_val_loss()
 
-            print(f"Epoch: {epoch}  |  Epoch_level: {epoch_level}  |  Train Loss (Min): {train_loss:.2f} ({min_print:.2f})    ", 
+            print(f"Epch: {epoch}  |  Epch_lvl: {epoch_level}  |  Val: {val_loss:.2f} | Train: {train_loss:.2f}", 
                   end='\r', flush=True)
 
+            learner.save_model()
             # Save
-            if train_loss < args.thresh_lvlup and train_loss < min_train_loss:
-                min_train_loss = train_loss
-                learner.save_model()
-                min_print = train_loss if train_loss < min_print else min_print
-                if epoch_level < 10: min_train_loss = args.thresh_lvlup * 1.1
+            # if val_loss < args.thresh_lvlup and val_loss < min_val_loss:
+            #     min_val_loss = val_loss
+            #     learner.save_model()
+            #     min_print = val_loss if val_loss < min_print else min_print
+                # if epoch_level < 10: min_train_loss = args.thresh_lvlup * 1.1
             
             # Check before level up. If last level -> Don't level up. Spend at least 10 epochs per level
-            if (min_train_loss < args.thresh_lvlup and level + 1 < args.num_levels and epoch_level >= 10) or lvl_up:
-                print(f'\n')
-                logger.info(f'Leveling up to level {level+1} with training loss: {min_train_loss:.2f} < {args.thresh_lvlup}')
+            # if (min_train_loss < args.thresh_lvlup and level + 1 < args.num_levels and epoch_level >= 10) or lvl_up:
+            #     print(f'\n')
+            #     logger.info(f'Leveling up to level {level+1} with training loss: {min_train_loss:.2f} < {args.thresh_lvlup}')
                 
-                lvl_up = True
-                learner.level_up()
+            #     lvl_up = True
+            #     learner.level_up()
                 
-                steps += args.steps
-                output_period += args.output_period
-                learner.set_steps(steps)
-                learner.set_output_period(output_period)
-                lr = args.lr
-                learner.set_lr(lr)
+            #     steps += args.steps
+            #     output_period += args.output_period
+            #     learner.set_steps(steps)
+            #     learner.set_output_period(output_period)
+            #     lr = args.lr
+            #     learner.set_lr(lr)
 
 
 if __name__ == "__main__":

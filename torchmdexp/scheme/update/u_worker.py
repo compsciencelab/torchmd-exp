@@ -48,11 +48,11 @@ class UWorker(Worker):
                                self.reweighting_execution, 
                                batch_size=self.batch_size)
 
-    def step(self, steps, output_period, val=False, log_dir=None):
+    def step(self, steps, output_period, val=False, use_network=True):
         """
         Makes a simulation and computes the weighted ensemble.
         """
-        info = self.updater.step(steps, output_period, val)        
+        info = self.updater.step(steps, output_period, val, use_network)        
         return info
     
     def set_init_state(self, init_state):
@@ -116,7 +116,9 @@ class Updater(Worker):
         # Other args
         self.batch_size = batch_size
     
-    def step(self, steps, output_period, val=False):
+        self.epoch = 1
+    
+    def step(self, steps, output_period, val=False, use_network=True):
         
         info = {}
         if val == False:
@@ -131,7 +133,8 @@ class Updater(Worker):
                           }
         
         # Simulation step
-        sim_dict, sys_names, nnp_prime = self.sim_step(steps, output_period)
+        sim_dict, sys_names, nnp_prime = self.sim_step(steps, output_period, use_network)
+
         torch.cuda.empty_cache() 
         
         # Reweighting step
@@ -158,21 +161,21 @@ class Updater(Worker):
         if val == True:
             losses_dict['val_loss_1'] = mean(losses_dict['val_loss_1'])
             losses_dict['val_loss_2'] = mean(losses_dict['val_loss_2']) if losses_dict['val_loss_2'][0] else None
-            
+
         info.update(losses_dict)
 
         return info
 
-    def sim_step(self, steps, output_period):
+    def sim_step(self, steps, output_period, use_network):
         
         sim_dict = defaultdict(list)
         
         if self.sim_execution == "centralised":
-            sim_dict = self.local_worker.simulate(steps, output_period)
+            sim_dict = self.local_worker.simulate(steps, output_period, use_network)
             nnp_prime = copy.deepcopy(self.local_worker.get_nnp())
             
         elif self.sim_execution == "parallelised":
-            pending = [e.simulate.remote(steps, output_period) for e in self.remote_workers]
+            pending = [e.simulate.remote(steps, output_period, use_network) for e in self.remote_workers]
             sim_results = ray_get_and_free(pending)
             for result in sim_results:
                 [sim_dict[key].extend(result[key]) for key in result.keys()]  

@@ -60,13 +60,18 @@ class Learner:
         keys = tuple([key for key in self.results_dict.keys()])
         self.monitor = LogWriter(self.log_dir,keys=keys)
 
-    def step(self, val=False, mode='val'):
+    def step(self, val=False, mode='val', use_network=True):
         """ Takes an optimization update step """
         
         self.logger.debug(f'Starting batch step. Epoch {self.epoch+1}')
+        if val:
+            self.logger.debug(f'Performing {mode} step.')
+        else:
+            self.logger.debug(f'Performing train step.')
+        self.logger.debug(f"{'Not u' if not use_network else 'U'}sing network for sampling.")
         
         # Update step
-        info = self.update_worker.step(self.steps, self.output_period, val)
+        info = self.update_worker.step(self.steps, self.output_period, val, use_network)
         
         self.logger.debug(f'Finished batch step. Adding results to dictionaries.')
         
