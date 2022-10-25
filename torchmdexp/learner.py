@@ -167,9 +167,13 @@ class Learner:
 
         # Compute loss 1, loss 2 and var_loss
         for key in self.keys:
-            if type(getattr(self, key, None)) is list:
-                self.results_dict[key] = mean(getattr(self, key)) if getattr(self, key, None) else None
-        
+            if type(getattr(self, key, None)) is not list:
+                continue
+            if len(getattr(self, key)) > 0:
+                self.results_dict[key] = mean(getattr(self, key))
+            else:
+                self.results_dict[key] = None
+
         # Reset everything
         self.train_losses = []
         self.val_losses = []
