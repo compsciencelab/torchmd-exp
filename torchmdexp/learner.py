@@ -165,19 +165,10 @@ class Learner:
             else:
                 self.results_dict['test_loss'] = None
 
-        # Compute loss 1 and 2
-        if 'loss_1' in self.keys:
-            self.results_dict['loss_1'] = mean(self.loss_1)  if self.loss_1[0] is not None else None
-        if 'loss_2' in self.keys:
-            self.results_dict['loss_2'] = mean(self.loss_2) if self.loss_2[0] is not None else None
-        if 'var_loss' in self.keys:
-            self.results_dict['var_loss'] = mean(self.var_loss) if self.var_loss[0] is not None else None
-        if 'val_loss_1' in self.keys:
-            self.results_dict['val_loss_1'] = mean(self.val_loss_1) if self.val_loss_1[0] is not None else None
-        if 'val_loss_2' in self.keys:
-            self.results_dict['val_loss_2'] = mean(self.val_loss_2) if self.val_loss_2[0] is not None else None
-        if 'val_var_loss' in self.keys:
-            self.results_dict['val_var_loss'] = mean(self.val_var_loss) if self.val_var_loss[0] is not None else None
+        # Compute loss 1, loss 2 and var_loss
+        for key in self.keys:
+            if type(getattr(self, key, None)) is list:
+                self.results_dict[key] = mean(getattr(self, key)) if getattr(self, key, None) else None
         
         # Reset everything
         self.train_losses = []
