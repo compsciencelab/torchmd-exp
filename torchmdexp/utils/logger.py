@@ -24,6 +24,10 @@ class LogWriter(object):
 
     def write_row(self, epinfo):
         if self.logger:
+            # Remove keys that should not be written
+            keys = list(epinfo.keys())
+            [epinfo.pop(k, None) for k in keys if k not in self.logger.fieldnames]
+            
             t = time.time() - self.tstart
             epinfo['t'] = t
             self.logger.writerow(epinfo)
