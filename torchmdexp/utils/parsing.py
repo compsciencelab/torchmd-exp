@@ -135,6 +135,7 @@ def get_args():
     parser.add_argument('--max_steps',type=int,default=400,help='Max Total number of simulation steps')
     parser.add_argument('--output-period',type=int,default=100,help='Pick one state every period')
     parser.add_argument('--energy_weight',  default=0.0,type=float, help='Weight assigned to the deltaenergy regularizer loss')
+    parser.add_argument('--var_weight', default=0.0, type=float, help='Weight assigned to the variance regularizer loss')
     parser.add_argument('--forcefield', default="/shared/carles/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
     parser.add_argument('--ff_type', type=str, choices=['file', 'full_pseudo_receptor'], default='file', help='Type of forcefield to use')
     parser.add_argument('--ff_pseudo_scale', type=float, default=1, help='Value that divides pseudobond strength')

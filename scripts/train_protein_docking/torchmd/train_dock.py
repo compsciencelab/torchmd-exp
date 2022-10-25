@@ -99,7 +99,8 @@ def main():
     weighted_ensemble_factory = WeightedEnsemble.create_factory(nstates = nstates, lr=lr, metric = ligand_rmsd, loss_fn=loss,
                                                                 val_fn=ligand_rmsd,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
-                                                                replicas = args.replicas, precision = torch.double)
+                                                                replicas = args.replicas, precision = torch.double,
+                                                                var_weight = args.var_weight)
 
 
     # 3. Define Scheme
@@ -174,9 +175,6 @@ def main():
             epoch_level += 1
             train_set.shuffle() # rdmize systems
             
-            if epoch == 20:
-                quit()
-            
             # Train step
             for i in range(0, len(train_set.get('names')), sim_batch_size):
                 # Get batch
@@ -212,9 +210,13 @@ def main():
             learner.compute_epoch_stats()
             learner.write_row()
             train_loss = learner.get_train_loss()
-            if (epoch == 1 or (epoch % args.val_freq) == 0): val_loss = learner.get_val_loss()
+            if (epoch == 1 or (epoch % args.val_freq) == 0): 
+                val_loss = learner.get_val_loss()
+                val_metric = learner.results_dict['val_loss_1']
+                var_loss = learner.results_dict['val_var_loss']
 
-            print(f"Epch: {epoch}  |  Epch_lvl: {epoch_level}  |  Val: {val_loss:.2f} | Train: {train_loss:.2f}", 
+            print(f"Epch: {epoch}  |  Epch_lvl: {epoch_level}  |  Val: {val_loss:.2f}",
+                  f"| Metric: {val_metric:.2f} | Var: {var_loss}", 
                   end='\r', flush=True)
 
             learner.save_model()
