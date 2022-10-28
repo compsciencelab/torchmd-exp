@@ -142,6 +142,8 @@ def get_args():
     parser.add_argument('--ff_full_scale', type=float, default=1, help='Value that divides all bonds strength')
     parser.add_argument('--forceterms', nargs='+', default=[], help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--multichain_emb', type=bool, default=False, help='Determines whether to use unique embeddings for the ligand or not')
+    parser.add_argument('--use_net_train', default=True, type=bool, help='Use network during training simulations')
+    parser.add_argument('--noise_std', default=0, type=float, help='Std of the noise added to the system')
 
     # other args
     parser.add_argument('--derivative', default=True, type=bool, help='If true, take the derivative of the prediction w.r.t coordinates')
