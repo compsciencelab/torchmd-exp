@@ -161,6 +161,7 @@ def get_args():
 
 
     args = parser.parse_args()
+    if args.val_freq == 0: args.val_freq = -1
     os.makedirs(args.log_dir,exist_ok=True)
     save_argparse(args,os.path.join(args.log_dir,'input.yaml'),exclude='conf')
 
