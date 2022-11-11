@@ -191,7 +191,7 @@ def main():
                         step_error = True
                         print(f'\nRetrying learning in epoch {epoch} because of error: {err}')
 
-            # Validattion step
+            # Validation step
             make_val_step = (epoch == 1 or (epoch % args.val_freq) == 0) and (args.val_freq > 0)
             if make_val_step:
                 for i in range(0, len(train_set.get('names')), sim_batch_size):
