@@ -1,0 +1,77 @@
+# Directories
+levels_dir: ../ex_data/molecules/all/CA/levels
+log_dir: log
+dataset: ../ex_data/datasets/1u38_B_A.txt
+max_loss: 5.0
+keys:
+    - epoch
+    - level
+    - steps
+    - train_loss
+    - val_loss
+    - var_loss
+    - val_var_loss
+    - loss_1
+    - val_loss_1
+debug_level: 'debug'
+
+# Gpus and batching
+device: 'cuda:0'
+batch_size: 1
+sim_batch_size: 1
+num_sim_workers: 1
+num_cpus: 32
+num_gpus: 1
+ngpus: -1
+
+# Training parameters
+seed: 17
+num_levels: 1
+levels_from: traj
+thresh_lvlup: 1.8
+lr: 5.e-4
+multichain_emb: True
+steps: 2000             # Number of states will be:
+output_period: 50       # nstates = nreplicas * steps / output_period
+replicas: 12
+val_freq: 1
+var_weight: 0.2
+
+# Simulation parameters
+use_net_train: False
+timestep: 2
+temperature: 298
+langevin_temperature: 298
+exclusions: ('bonds')
+forceterms: 
+    - bonds
+    - repulsioncg 
+
+# Forcefield
+forcefield: /shared/eloi/docking/torchmd-exp/examples/docking/ex_data/forcefields/ca_priors-dihedrals_general_5xweaker.yaml
+ff_type: full_pseudo_receptor
+ff_pseudo_scale: 1
+ff_full_scale: 1
+# ff_save: path
+
+# Rest of Hyperparams
+activation: tanh
+atom_filter: -1
+local_worker: True
+cutoff_lower: 3.0
+cutoff_upper: 9.0
+cutoff: 9
+derivative: True
+embedding_dimension: 128
+max_grad_norm: 0.2
+max_num_neighbors: 128
+max_z: 100
+neighbor_embedding: False
+num_filters: 256
+num_layers: 2
+num_nodes: 1
+num_rbf: 18
+reduce_op: add
+precision: 32
+rbf_type: expnorm
+trainable_rbf: True
