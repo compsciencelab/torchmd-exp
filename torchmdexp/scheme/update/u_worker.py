@@ -1,6 +1,5 @@
 from ..base.worker import Worker
 import torch
-import time
 from statistics import mean
 from torchmdexp.scheme.utils import average_gradients, ray_get_and_free
 import numpy as np
@@ -48,11 +47,11 @@ class UWorker(Worker):
                                self.reweighting_execution, 
                                batch_size=self.batch_size)
 
-    def step(self, steps, output_period, val=False, log_dir=None):
+    def step(self, steps, output_period, val=False, use_network=True):
         """
         Makes a simulation and computes the weighted ensemble.
         """
-        info = self.updater.step(steps, output_period, val)        
+        info = self.updater.step(steps, output_period, val, use_network)        
         return info
     
     def set_init_state(self, init_state):
@@ -116,22 +115,28 @@ class Updater(Worker):
         # Other args
         self.batch_size = batch_size
     
-    def step(self, steps, output_period, val=False):
+        self.epoch = 1
+    
+    def step(self, steps, output_period, val=False, use_network=True):
         
         info = {}
         if val == False:
             losses_dict = {'loss_1': [], 
                            'loss_2': [],
+                           'var_loss': [],
                            'val_loss_1': None,
-                           'val_loss_2': None
+                           'val_loss_2': None,
+                           'val_var_loss': None
                             }
         else:
             losses_dict = {'val_loss_1': [],
-                           'val_loss_2': []
+                           'val_loss_2': [],
+                           'val_var_loss': []
                           }
         
         # Simulation step
-        sim_dict, sys_names, nnp_prime = self.sim_step(steps, output_period)
+        sim_dict, sys_names, nnp_prime = self.sim_step(steps, output_period, use_network)
+
         torch.cuda.empty_cache() 
         
         # Reweighting step
@@ -151,28 +156,26 @@ class Updater(Worker):
         elif len(val_losses) > 0:
             info['val_loss'] = mean(val_losses)
         
-        if val == False:
-            losses_dict['loss_1'] = mean(losses_dict['loss_1'])
-            losses_dict['loss_2'] = mean(losses_dict['loss_2']) if losses_dict['loss_2'][0] else None
-        
-        if val == True:
-            losses_dict['val_loss_1'] = mean(losses_dict['val_loss_1'])
-            losses_dict['val_loss_2'] = mean(losses_dict['val_loss_2']) if losses_dict['val_loss_2'][0] else None
-            
+        val_str = 'val_' if val else ''
+
+        losses_dict[f'{val_str}loss_1'] = mean(losses_dict[f'{val_str}loss_1'])
+        losses_dict[f'{val_str}loss_2'] = mean(losses_dict[f'{val_str}loss_2']) if losses_dict[f'{val_str}loss_2'][0] else None
+        losses_dict[f'{val_str}var_loss'] = mean(losses_dict[f'{val_str}var_loss']) if losses_dict[f'{val_str}var_loss'][0] else None
+
         info.update(losses_dict)
 
         return info
 
-    def sim_step(self, steps, output_period):
+    def sim_step(self, steps, output_period, use_network):
         
         sim_dict = defaultdict(list)
         
         if self.sim_execution == "centralised":
-            sim_dict = self.local_worker.simulate(steps, output_period)
+            sim_dict = self.local_worker.simulate(steps, output_period, use_network)
             nnp_prime = copy.deepcopy(self.local_worker.get_nnp())
             
         elif self.sim_execution == "parallelised":
-            pending = [e.simulate.remote(steps, output_period) for e in self.remote_workers]
+            pending = [e.simulate.remote(steps, output_period, use_network) for e in self.remote_workers]
             sim_results = ray_get_and_free(pending)
             for result in sim_results:
                 [sim_dict[key].extend(result[key]) for key in result.keys()]  
@@ -230,15 +233,23 @@ class Updater(Worker):
 
                     # Save losses and Metric Values
                     losses_dict[s] = values_dict['avg_metric']
-
-                    if val == False:
-                        losses_dict['loss_1'].append(values_dict['loss_1'])
-                        if 'loss_2' in values_dict:
-                            losses_dict['loss_2'].append(values_dict['loss_2'])
-                    else:
-                        losses_dict['val_loss_1'].append(values_dict['val_loss_1'])
-                        if 'val_loss_2' in values_dict:
-                            losses_dict['val_loss_2'].append(values_dict['val_loss_2'])
+                    # import ipdb; ipdb.set_trace()
+                    val_string = 'val_' if val else ''
+                    
+                    losses_dict[f'{val_string}loss_1'].append(values_dict[f'{val_string}loss_1'])
+                    if f'{val_string}loss_2' in values_dict:
+                        losses_dict[f'{val_string}loss_2'].append(values_dict[f'{val_string}loss_2'])
+                    if f'{val_string}var_loss' in values_dict:
+                        losses_dict[f'{val_string}var_loss'].append(values_dict[f'{val_string}var_loss'])
+                    
+                    # if val == False:
+                    #     losses_dict['loss_1'].append(values_dict['loss_1'])
+                    #     if 'loss_2' in values_dict:
+                    #         losses_dict['loss_2'].append(values_dict['loss_2'])
+                    # else:
+                    #     losses_dict['val_loss_1'].append(values_dict['val_loss_1'])
+                    #     if 'val_loss_2' in values_dict:
+                    #         losses_dict['val_loss_2'].append(values_dict['val_loss_2'])
                                 
                     torch.cuda.empty_cache()
                 

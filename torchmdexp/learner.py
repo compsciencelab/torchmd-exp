@@ -36,8 +36,10 @@ class Learner:
         # Individual Losses of the epoch
         self.loss_1 = []
         self.loss_2 = []
+        self.var_loss = []
         self.val_loss_1 = []
         self.val_loss_2 = []
+        self.val_var_loss = []
         
         # Losses of the epoch
         self.train_loss = None
@@ -60,27 +62,35 @@ class Learner:
         keys = tuple([key for key in self.results_dict.keys()])
         self.monitor = LogWriter(self.log_dir,keys=keys)
 
-    def step(self, val=False, mode='val'):
+    def step(self, val=False, mode='val', use_network=True):
         """ Takes an optimization update step """
         
         self.logger.debug(f'Starting batch step. Epoch {self.epoch+1}')
+        if val:
+            self.logger.debug(f'Performing {mode} step.')
+        else:
+            self.logger.debug(f'Performing train step.')
+        self.logger.debug(f"{'Not u' if not use_network else 'U'}sing network for sampling.")
         
         # Update step
-        info = self.update_worker.step(self.steps, self.output_period, val)
+        info = self.update_worker.step(self.steps, self.output_period, val, use_network)
         
         self.logger.debug(f'Finished batch step. Adding results to dictionaries.')
-        
+
         if val == True:
             if mode == 'val':
                 self.val_losses.append(info['val_loss'])
                 self.val_loss_1.append(info['val_loss_1'])
                 self.val_loss_2.append(info['val_loss_2'])
+                self.val_var_loss.append(info['val_var_loss'])
+
             elif mode == 'test':
                 self.test_losses.append(info['val_loss'])
         else:
             self.train_losses.append(info['train_loss'])
             self.loss_1.append(info['loss_1'])
             self.loss_2.append(info['loss_2'])
+            self.var_loss.append(info['var_loss'])
         
         [info.pop(k, None) for k in ['train_loss', 'val_loss', 'test_loss', 'loss_1', 'loss_2', 'val_loss_1', 'val_loss_2']]
         
@@ -155,25 +165,25 @@ class Learner:
             else:
                 self.results_dict['test_loss'] = None
 
-        
-        # Compute loss 1 and 2
-        if 'loss_1' in self.keys:
-            self.results_dict['loss_1'] = mean(self.loss_1)
-        if 'loss_2' in self.keys:
-            self.results_dict['loss_2'] = mean(self.loss_2)
-        if 'val_loss_1' in self.keys:
-            self.results_dict['val_loss_1'] = mean(self.val_loss_1)
-        if 'val_loss_2' in self.keys:
-            self.results_dict['val_loss_2'] = mean(self.val_loss_2)
-        
+        # Compute loss 1, loss 2 and var_loss
+        for key in self.keys:
+            if type(getattr(self, key, None)) is not list:
+                continue
+            if len(getattr(self, key)) > 0:
+                self.results_dict[key] = mean(getattr(self, key))
+            else:
+                self.results_dict[key] = None
+
         # Reset everything
         self.train_losses = []
         self.val_losses = []
         self.test_losses = []
         self.loss_1 = []
         self.loss_2 = []
+        self.var_loss = []
         self.val_loss_1 = []
         self.val_loss_2 = []
+        self.val_var_loss = []
         
     def write_row(self):
         if self.monitor:

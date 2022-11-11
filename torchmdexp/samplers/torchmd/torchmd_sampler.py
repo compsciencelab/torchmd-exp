@@ -224,7 +224,7 @@ class TorchMD_Sampler(Sampler):
         return create_sampler_instance
 
             
-    def simulate(self, steps, output_period):
+    def simulate(self, steps, output_period, use_network=True):
         """
         Function to run a simulation of the system, and sample a given number of states with their prior energies 
         from the trajectory.
@@ -246,7 +246,7 @@ class TorchMD_Sampler(Sampler):
         # Iterator and start computing forces
         self.logger.debug('Obtaining integrator')
         iterator = range(1,int(steps/output_period)+1)
-        integrator = self._set_integrator(self.mols, self.lengths)
+        integrator = self._set_integrator(self.mols, self.lengths, use_network)
         
         # Define the states
         nstates = int(steps // output_period) * self.replicas
@@ -315,7 +315,7 @@ class TorchMD_Sampler(Sampler):
         self.sim_dict['ground_truths'] = batch.get('ground_truths')
         self.sim_dict['mols'] = self.mols
         
-    def _set_integrator(self, mols, lengths):
+    def _set_integrator(self, mols, lengths, use_network=True):
         
         # Create simulation system
         self.logger.debug(f'Creating system from batch of size {len(mols)}')
@@ -327,8 +327,11 @@ class TorchMD_Sampler(Sampler):
         
         # Create embeddings and the external force
         embeddings = get_embeddings(mol, self.device, self.replicas, self.multichain_emb)
-        external = External(self.nnp, embeddings, device = self.device)
-        self.logger.debug(f'Got embeddings ({embeddings.shape}) and external force from nnp')
+        if use_network:
+            external = External(self.nnp, embeddings, device = self.device)
+        else:
+            external = None
+        self.logger.debug(f'Got embeddings ({embeddings.shape}) but not external force from nnp')
         
         # Add the embeddings to the sim_dict
         my_e = embeddings 
