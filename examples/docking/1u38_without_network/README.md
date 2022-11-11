@@ -2,7 +2,7 @@
 
 In order to run this test, modify the `log_dir` parameter to point to the directory where you want the log directory to be created. Ideally, set the path to this folder.
 
-It is important that de forcefield path is an absolute path and not a relative path, since it will be used by the test simulations that may be in another directory.
+It is important that the forcefield path is an absolute path and not a relative path, since it will be used by the test simulations that may be in another directory.
 
 Execute the command (from this directory):
 
