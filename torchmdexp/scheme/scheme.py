@@ -43,7 +43,6 @@ class Scheme:
                  # core
                  sim_factory,
                  systems_factory,
-                 systems,
                  nnp,
                  device,
                  weighted_ensemble_factory,
@@ -71,7 +70,6 @@ class Scheme:
         sim_workers_factory = SimWorkerSet.create_factory(num_workers=num_sim_workers, 
                                                           sim_factory=sim_factory, 
                                                           systems_factory=systems_factory, 
-                                                          systems=systems,
                                                           device=device,
                                                           nnp=nnp,
                                                           add_local_worker=add_local_worker,

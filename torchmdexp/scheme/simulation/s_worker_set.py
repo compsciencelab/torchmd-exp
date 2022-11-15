@@ -33,7 +33,6 @@ class SimWorkerSet(WS):
                  index_parent,
                  sim_factory,
                  systems_factory,
-                 systems,
                  device,
                  nnp,
                  add_local_worker=True,
@@ -51,7 +50,8 @@ class SimWorkerSet(WS):
             "device": device,
         }
         
-        self.worker_systems, self.workers_info = systems_factory(systems, num_workers)
+        #self.worker_systems, self.workers_info = systems_factory(num_workers)
+        #print(self.workers_info)
         
         self.num_workers = num_workers
         super(SimWorkerSet, self).__init__(
@@ -77,10 +77,11 @@ class SimWorkerSet(WS):
         cls = self.worker_class.as_remote(**self.remote_config).remote
         workers = []
         for i in range(num_workers):
-            system = {'system': self.worker_systems[i]}
-            info = {'worker_info': self.workers_info[i]}
-            self.worker_params.update(system)
-            self.worker_params.update(info)
+            #system = {'system': self.worker_systems[i]}
+            #info = {'worker_info': self.workers_info[i]}
+            #self.worker_params.update(system)
+            #self.worker_params.update(info)
+            
             workers.append(self._make_worker(cls, index_worker=i + 1, worker_params=self.worker_params))
         self._remote_workers.extend(workers)
 
@@ -89,7 +90,6 @@ class SimWorkerSet(WS):
                        num_workers,
                        sim_factory,
                        systems_factory,
-                       systems,
                        device,
                        nnp,
                        add_local_worker=True,
@@ -129,7 +129,6 @@ class SimWorkerSet(WS):
                 index_parent=index_parent,
                 sim_factory=sim_factory,
                 systems_factory=systems_factory,
-                systems=systems,
                 device=device,
                 nnp=nnp,
                 add_local_worker=add_local_worker,

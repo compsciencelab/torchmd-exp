@@ -77,6 +77,12 @@ class ProteinDataset(Dataset):
         for k, v in data_dict.items():
             self.dataset[k] = v
     
+    def set_buffer(self, name):
+        
+        self.dataset[name] = copy.deepcopy(self.dataset['molecules'])
+        [mol.dropFrames(0) for mol in self.dataset[name]]
+            
+    
     def get_keys(self):
         """ Returns the dataset keys as a list. """
         return list(self.dataset.keys())

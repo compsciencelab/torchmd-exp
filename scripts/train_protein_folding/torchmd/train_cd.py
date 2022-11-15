@@ -5,7 +5,7 @@ from torchmdexp.datasets.proteins import ProteinDataset
 from torchmdexp.samplers.torchmd.torchmd_sampler import TorchMD_Sampler
 from torchmdexp.samplers.utils import moleculekit_system_factory
 from torchmdexp.scheme.scheme import Scheme
-from torchmdexp.weighted_ensembles.weighted_ensemble import WeightedEnsemble
+from torchmdexp.contrastive_divergence.contrastive_divergence import CD
 from torchmdexp.learner import Learner
 from torchmdexp.metrics.losses import Losses
 from torchmd.utils import LoadFromFile
@@ -84,12 +84,8 @@ def main():
     
     # 2. Define the Weighted Ensemble that computes the ensemble of states   
     loss = Losses(0.0, fn_name=args.loss_fn, margin=args.margin, y=1.0)
-    weighted_ensemble_factory = WeightedEnsemble.create_factory(optimizer = optim, nstates = nstates, lr=lr, metric = rmsd, loss_fn=loss,
-                                                                val_fn=rmsd,
-                                                                max_grad_norm = args.max_grad_norm, T = args.rw_temperature, 
-                                                                replicas = args.replicas, precision = torch.double, 
-                                                                energy_weight = args.energy_weight
-                                                               )
+    
+    contrastive_divergence_factory = CD.create_factory(optimizer = optim, nstates = nstates, lr=lr, precision = torch.double)
 
 
     # 3. Define Scheme
@@ -98,10 +94,9 @@ def main():
     # Core
     params.update({'sim_factory': torchmd_sampler_factory,
                    'systems_factory': moleculekit_system_factory,
-                   'systems': train_set,
                    'nnp': nnp,
                    'device': args.device,
-                   'weighted_ensemble_factory': weighted_ensemble_factory,
+                   'weighted_ensemble_factory': contrastive_divergence_factory,
                    'loss_fn': loss
     })
 
@@ -147,8 +142,6 @@ def main():
             b += 1
             start = time.perf_counter()
             batch = copy.copy(train_set[ i : sim_batch_size + i])
-            if args.add_noise == True:
-                batch.add_gaussian_noise(std=0.01)
 
             learner.set_batch(batch)
             learner.step()
@@ -164,53 +157,24 @@ def main():
                     learner.set_batch(batch)
                     learner.step(val=True)
 
-        # TEST STEP
-        if args.test_set is not None:
-            if (epoch == 1 or (epoch % args.test_freq) == 0):
-                test_set.shuffle()
-                test_output = steps // 3
-                learner.set_output_period(test_output)
-                learner.set_steps(test_output * 2)
-                for i in range(0, test_set_size, sim_batch_size):
-                    batch = test_set[ i // 8: (sim_batch_size + i) // 8]
-                    learner.set_batch(batch)
-                    learner.step(val=True, mode='test')
-                learner.set_output_period(output_period)
-                learner.set_steps(steps)
-        
         learner.compute_epoch_stats()
         learner.write_row()
         
         loss = learner.get_train_loss()
-        val_loss = learner.get_val_loss()
+        avg_metric = learner.get_avg_metric()
         #scheduler.step(val_loss)
         
-        print(f'EPOCH {epoch}. Loss: {loss} Val loss {val_loss}')
-              
-        print(optim.param_groups[0]['lr'])
-        print(learner.update_worker.updater.local_we_worker.weighted_ensemble.optimizer.param_groups[0]['lr'])
+        print(f'EPOCH {epoch}. Loss: {loss} RMSD loss {avg_metric}')
         
-        if val_loss is not None:
-            if val_loss < max_loss:
-                max_loss = val_loss
+        if avg_metric is not None:
+            if avg_metric < max_loss:
+                max_loss = avg_metric
                 learner.save_model()
             
-            #if val_loss < 1.1 and steps < 2000:
-            #    steps += 50
-            #    output_period = steps // 20
-            #    learner.set_steps(steps)
-            #    learner.set_output_period(output_period) 
         else:
             if loss < max_loss:
                 max_loss = loss
                 learner.save_model()
-        
-        if (epoch % 5) == 0:
-            steps *= 2
-            output_period *= 2
-            learner.set_steps(steps)
-            learner.set_output_period(output_period)
-            max_loss = args.max_loss
             
 
 if __name__ == "__main__":

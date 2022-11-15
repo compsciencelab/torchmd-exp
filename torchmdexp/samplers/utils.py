@@ -12,13 +12,9 @@ def get_embeddings(mol, device, replicas, multi_chain=False):
         multi_chain (bool, optional): Determines whether to use different embeddings
         for receptor and ligand. Defaults to False.
     """
-    AA2INT = {'ALA':1, 'GLY':2, 'PHE':3, 'TYR':4, 'ASP':5, 'GLU':6, 'TRP':7,'PRO':8,
-              'ASN':9, 'GLN':10, 'HIS':11, 'HSD':11, 'HSE':11, 'SER':12,'THR':13,
-              'VAL':14, 'MET':15, 'CYS':16, 'NLE':17, 'ARG':18,'LYS':19, 'LEU':20,
-              'ILE':21,
-             }
+
     if not multi_chain:
-        emb = np.array([AA2INT[x] for x in mol.resname])    
+        emb = np.array([AA2INT[c][aa] for c, aa in zip(mol.name, mol.resname)])  
     
     # Same as without multichain but add 22 to ligand chain to get different embeddings
     else:
@@ -45,9 +41,9 @@ def get_native_coords(mol, device='cpu'):
     
     return pos
 
-def moleculekit_system_factory(systems_dataset, num_workers):
+def moleculekit_system_factory(num_workers):
     
-    batch_size = len(systems_dataset) // num_workers
+    #batch_size = len(systems_dataset) // num_workers
     systems = []
     worker_info = []
     
@@ -108,7 +104,22 @@ def create_system(molecules, dist = 200):
 
     return batch
 
-AA2INT = {'ALA':1,
+
+
+
+AA2INT = {'CA': {'ALA': 1, 'GLY':2, 'PHE':3, 'TYR':4, 'ASP':5, 'GLU':6, 'TRP':7,'PRO':8,
+              'ASN':9, 'GLN':10, 'HIS':11, 'HSD':11, 'HSE':11, 'SER':12,'THR':13,
+              'VAL':14, 'MET':15, 'CYS':16, 'NLE':17, 'ARG':18,'LYS':19, 'LEU':20,
+              'ILE':21,
+             },
+                'CB': {'ALA': 22, 'GLY':23, 'PHE':24, 'TYR':25, 'ASP':26, 'GLU':27, 'TRP':28,'PRO':29,
+              'ASN':30, 'GLN':31, 'HIS':32, 'HSD':33, 'HSE':34, 'SER':35,'THR':36,
+              'VAL':37, 'MET':38, 'CYS':39, 'NLE':40, 'ARG':41,'LYS':42, 'LEU':43,
+              'ILE':44
+             }}
+
+
+a = ''' AA2INT = {'ALA':1,
          'GLY':2,
          'PHE':3,
          'TYR':4,
@@ -131,4 +142,4 @@ AA2INT = {'ALA':1,
           'LYS':20,
           'LEU':21,
           'ILE':22
-         }
+         } '''

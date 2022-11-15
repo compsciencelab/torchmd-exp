@@ -33,11 +33,8 @@ class Learner:
         self.test_losses = []
         
         # Individual Losses of the epoch
-        self.loss_1 = []
-        self.loss_2 = []
-        self.val_loss_1 = []
-        self.val_loss_2 = []
-        
+
+
         # Losses of the epoch
         self.train_loss = None
         self.val_loss = None
@@ -58,7 +55,7 @@ class Learner:
         
         keys = tuple([key for key in self.results_dict.keys()])
         self.logger = LogWriter(self.log_dir,keys=keys)
-
+        
     def step(self, val=False, mode='val'):
         """ Takes an optimization update step """
         
@@ -66,21 +63,15 @@ class Learner:
         info = self.update_worker.step(self.steps, self.output_period, val)
         
         if val == True:
-            if mode == 'val':
-                self.val_losses.append(info['val_loss'])
-                self.val_loss_1.append(info['val_loss_1'])
-                self.val_loss_2.append(info['val_loss_2'])
-            elif mode == 'test':
+            if mode == 'test':
                 self.test_losses.append(info['val_loss'])
         else:
             self.train_losses.append(info['train_loss'])
-            self.loss_1.append(info['loss_1'])
-            self.loss_2.append(info['loss_2'])
         
         [info.pop(k, None) for k in ['train_loss', 'val_loss', 'test_loss', 'loss_1', 'loss_2', 'val_loss_1', 'val_loss_2']]
         
-        if len(self.train_names) > 0:
-            self.results_dict.update(info)
+        self.avg_metric = info['avg_metric']
+        self.results_dict.update(info)
 
     def level_up(self):
         """ Increases level of difficulty """
@@ -122,6 +113,7 @@ class Learner:
         # Compute train loss
         self.train_loss = mean(self.train_losses)
         self.results_dict['train_loss'] = self.train_loss
+        self.results_dict['lr'] = self.update_worker.updater.local_we_worker.weighted_ensemble.optimizer.param_groups[0]['lr']
         
         # Update epoch
         self.epoch += 1
@@ -147,17 +139,6 @@ class Learner:
                 self.results_dict['test_loss'] = self.test_loss
             else:
                 self.results_dict['test_loss'] = None
-
-        
-        # Compute loss 1 and 2
-        if 'loss_1' in self.keys:
-            self.results_dict['loss_1'] = mean(self.loss_1)
-        if 'loss_2' in self.keys:
-            self.results_dict['loss_2'] = mean(self.loss_2)
-        if 'val_loss_1' in self.keys:
-            self.results_dict['val_loss_1'] = mean(self.val_loss_1)
-        if 'val_loss_2' in self.keys:
-            self.results_dict['val_loss_2'] = mean(self.val_loss_2)
         
         # Reset everything
         self.train_losses = []
@@ -174,6 +155,9 @@ class Learner:
 
     def get_val_loss(self):
         return self.val_loss
+    
+    def get_avg_metric(self):
+        return self.avg_metric
     
     def get_train_loss(self):
         return self.train_loss

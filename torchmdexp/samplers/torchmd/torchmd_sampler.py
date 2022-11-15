@@ -67,12 +67,8 @@ class TorchMD_Sampler(Sampler):
     """
     
     def __init__(self,
-                 mols,
                  nnp,
                  device,
-                 lengths,
-                 names,
-                 ground_truths,
                  forcefield, 
                  forceterms,
                  replicas, 
@@ -85,9 +81,6 @@ class TorchMD_Sampler(Sampler):
                  temperature=350,
                  langevin_temperature=350,
                  langevin_gamma=0.1,
-                 init_states = None,
-                 x = None,
-                 y = None,
                  ff_type='file',
                  ff_pseudo_scale=1,
                  ff_full_scale=1,
@@ -96,11 +89,6 @@ class TorchMD_Sampler(Sampler):
                  log_dir = ''
                 ):
         
-        self.mols = mols
-        self.lengths = lengths
-        self.names = names
-        self.x = x
-        self.y = y
         self.device = device
         self.replicas = replicas
         self.forceterms = forceterms
@@ -124,9 +112,6 @@ class TorchMD_Sampler(Sampler):
         self.nnp = nnp
 
         # ------------------- Set the ground truth list (PDB coordinates) -----------
-        self.ground_truths = {name: ground_truths[idx] for idx, name in enumerate(names)}
-
-        self.init_coords = None
         
         # Create the dictionary used to return states and prior energies
         self.sim_dict = collections.defaultdict(dict)
@@ -193,14 +178,10 @@ class TorchMD_Sampler(Sampler):
             creates a new TorchMD_Sampler instance.
         """
 
-        def create_sampler_instance(mol, nnp, device, lengths, names, ground_truths, init_states=None, x=None, y=None):
+        def create_sampler_instance(nnp, device):
 
-            return cls(mol,
-                       nnp,
+            return cls(nnp,
                        device,
-                       lengths, # molecule lengths
-                       names,
-                       ground_truths,
                        forcefield, 
                        forceterms,
                        replicas, 
@@ -213,9 +194,6 @@ class TorchMD_Sampler(Sampler):
                        temperature,
                        langevin_temperature,
                        langevin_gamma,
-                       init_states,
-                       x,
-                       y,
                        ff_type,
                        ff_pseudo_scale,
                        ff_full_scale,
@@ -259,14 +237,12 @@ class TorchMD_Sampler(Sampler):
         
         # Set states and prior energies dicts
         sample_dict['states'] = []
-        sample_dict['U_prior'] = [torch.zeros([nstates], device='cpu') for _ in self.names]
-        sample_dict['x'] = self.x
-        sample_dict['y'] = self.y
         
         # Run the simulation
         for i in iterator:
-            Ekin, Epot, T = integrator.step(niter=output_period)
             states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
+            Ekin, Epot, T = integrator.step(niter=output_period)
+            
 
         sample_dict = self._split_states(states, sample_dict)          
 
@@ -293,24 +269,20 @@ class TorchMD_Sampler(Sampler):
     def get_ground_truth(self, gt):
         return self.sim_dict[gt]['gt']
     
-    def set_batch(self, batch):
+    def set_batch(self, batch, sample='native_ensemble'):
         
         self.names = batch.get('names')
         self.lengths = batch.get('lengths')
         self.mols = batch.get('molecules')
         
-        if (self.x and self.y) is not None:
-            self.x = batch.get('x')
-            self.y = batch.get('y')
-        if 'init_states' in batch.get_keys():
-            for mol, init_state in zip(self.mols, batch.get('init_states')):
-                mol.coords = init_state[:, :, None]
-            self.init_coords = self.set_init_state(self.mols)
+        for mol, init_state in zip(self.mols, batch.get(sample)):
+            mol.coords = np.array(init_state.squeeze(0)[:, :, None])            
+        self.init_coords = self.set_init_state(self.mols)
         
         self.sim_dict['names'] = self.names
-        self.sim_dict['ground_truths'] = batch.get('ground_truths')
-        self.sim_dict['mols'] = self.mols
-        
+        self.sim_dict['native_ensemble'] = batch.get('native_ensemble')
+        self.sim_dict['crystal'] = batch.get('crystal')
+                
     def _set_integrator(self, mols, lengths):
         
         # Create simulation system
@@ -333,11 +305,6 @@ class TorchMD_Sampler(Sampler):
         # Create forces
         if self.ff_type == 'file':
             ff = ForceField.create(mol, self.forcefield)        
-        elif self.ff_type == 'full_pseudo_receptor':
-            ff = ForceField.create(mol, os.path.join(self.log_dir, 'forcefield.yaml'))
-        else:
-            raise ValueError('ff_type should be ("file" | "full_pseudo_receptor") but ',
-                             'got ' + self.ff_type + ' instead')
                              
         parameters = Parameters(ff, mol, terms=self.forceterms, device=self.device) 
         

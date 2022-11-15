@@ -10,6 +10,7 @@ class WeightedEnsemble:
     def __init__(
         self,
         nnp,
+        optimizer,
         nstates,
         lr,
         metric,
@@ -35,7 +36,7 @@ class WeightedEnsemble:
         
         # ------------------- Neural Network Potential and Optimizer -----------------
         self.nnp = nnp
-        self.optimizer = torch.optim.Adam(self.nnp.parameters(), lr=lr)
+        self.optimizer = optimizer
 
         # ------------------- Loss ----------------------------------
         self.loss = torch.tensor(0, dtype = precision, device=device)
@@ -46,6 +47,7 @@ class WeightedEnsemble:
         
     @classmethod
     def create_factory(cls,
+                       optimizer,
                        nstates,
                        lr,
                        metric,
@@ -82,6 +84,7 @@ class WeightedEnsemble:
         
         def create_weighted_ensemble_instance(nnp, device):
             return cls(nnp,
+                       optimizer,
                        nstates,
                        lr,
                        metric,
