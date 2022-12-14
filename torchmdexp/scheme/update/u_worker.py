@@ -9,6 +9,7 @@ import ray
 import random
 from collections import defaultdict
 import copy
+from operator import itemgetter 
 
 class UWorker(Worker):
     """
@@ -47,6 +48,7 @@ class UWorker(Worker):
                                self.sim_execution,
                                self.reweighting_execution, 
                                batch_size=self.batch_size)
+        
 
     def step(self, steps, output_period, val=False, log_dir=None):
         """
@@ -62,16 +64,16 @@ class UWorker(Worker):
     def get_init_state(self):
         return self.updater.local_we_worker.get_init_state()
     
-    def set_batch(self, batch):
+    def set_batch(self, batch, sample):
         
         if self.sim_execution == "centralised" and self.reweighting_execution == "centralised":
-            self.updater.local_worker.set_batch(batch)
+            self.updater.local_worker.set_batch(batch, sample)
             
         elif self.sim_execution == "parallelised" and self.reweighting_execution == "centralised":
             batch_size = len(batch) // len(self.updater.remote_workers)
             for idx, e in enumerate(self.updater.remote_workers):
                 remote_batch = batch[batch_size * idx : batch_size  * (idx + 1)]
-                e.set_batch.remote(remote_batch)
+                e.set_batch.remote(remote_batch, sample)
 
     def get_val_rmsd(self):
         return self.val_rmsd
@@ -83,11 +85,12 @@ class UWorker(Worker):
 
         elif self.sim_execution == "parallelised":
             self.updater.remote_workers[0].save_model.remote(path)
-            #sim_results = ray_get_and_free(pending)
-            #[sim_dict.update(result) for result in sim_results]
     
     def set_lr(self, lr):
         self.updater.local_we_worker.set_lr(lr)
+    
+    def get_buffers(self):
+        return self.updater.get_buffers()
 
 
               
@@ -115,20 +118,20 @@ class Updater(Worker):
 
         # Other args
         self.batch_size = batch_size
+        
+        # Buffers
+        self.buffers = {}
     
+    def get_buffers(self):
+        return self.buffers
+        
     def step(self, steps, output_period, val=False):
         
         info = {}
         if val == False:
-            losses_dict = {'loss_1': [], 
-                           'loss_2': [],
-                           'val_loss_1': None,
-                           'val_loss_2': None
-                            }
+            losses_dict = {'train_avg_metric': []}
         else:
-            losses_dict = {'val_loss_1': [],
-                           'val_loss_2': []
-                          }
+            losses_dict = {'val_avg_metric': []}
         
         # Simulation step
         sim_dict, sys_names, nnp_prime = self.sim_step(steps, output_period)
@@ -136,7 +139,8 @@ class Updater(Worker):
         
         # Reweighting step
         train_losses, val_losses, losses_dict = self.reweight_step(sim_dict, losses_dict, sys_names, nnp_prime, val=val)
-
+        torch.cuda.empty_cache() 
+        
         # Set weights
         weights = self.local_we_worker.get_weights()
         if self.sim_execution == "centralised":
@@ -147,20 +151,16 @@ class Updater(Worker):
         # Update info dict
         if len(train_losses) > 0:
             info['train_loss'] = mean(train_losses)
+            losses_dict['train_avg_metric'] = mean(losses_dict['train_avg_metric'])
             info['val_loss'] = None
         elif len(val_losses) > 0:
             info['val_loss'] = mean(val_losses)
+            losses_dict['val_avg_metric'] = mean(losses_dict['val_avg_metric'])
         
-        if val == False:
-            losses_dict['loss_1'] = mean(losses_dict['loss_1'])
-            losses_dict['loss_2'] = mean(losses_dict['loss_2']) if losses_dict['loss_2'][0] else None
-        
-        if val == True:
-            losses_dict['val_loss_1'] = mean(losses_dict['val_loss_1'])
-            losses_dict['val_loss_2'] = mean(losses_dict['val_loss_2']) if losses_dict['val_loss_2'][0] else None
-            
-        info.update(losses_dict)
+        #losses_dict['avg_metric'] = mean(losses_dict['avg_metric'])
 
+        info.update(losses_dict)
+        
         return info
 
     def sim_step(self, steps, output_period):
@@ -179,68 +179,85 @@ class Updater(Worker):
             nnp_prime = copy.deepcopy(ray.get(self.remote_workers[0].get_nnp.remote()))
             
         sys_names = list(sim_dict['names'])
-                
+        del sim_dict['names']
+        
         return sim_dict, sys_names, nnp_prime
 
     def reweight_step(self, sim_dict, losses_dict, sys_names, nnp_prime, val=False):
         
         train_losses = []
         val_losses = []
-        
+        self.buffers = {}
+
         if self.reweighting_execution == "centralised":
             num_systems = len(sys_names)
-            nnp_prime = None if num_systems == self.batch_size else nnp_prime
             tmp_names = sys_names
-            
+
             # Update for all the simulated systems
             for i in range(0, num_systems, self.batch_size):
                 
                 if self.batch_size > len(tmp_names) and self.batch_size < num_systems:
                     n_to_add = self.batch_size - len(tmp_names)
-                    n_to_sample = len(sys_names) - n_to_add                    
-                    tmp_names += random.sample(sys_names[:n_to_sample], n_to_add)
-                    
+                    n_to_sample = len(sys_names) - n_to_add
+
+                    tmp_names += [sys_names[:n_to_sample][i] for i in torch.randperm(n_to_add)]
+                                        
                 batch_names, tmp_names = tmp_names[:self.batch_size], tmp_names[self.batch_size:]
                 
                 grads_to_average = []
-
                 # Mini-batch update
                 for idx, s in enumerate(batch_names):
                     system_result = {key:sim_dict[key][idx] if sim_dict[key] else None for key in sim_dict.keys()}
+                    self.buffers[s] = {'native_coords': [],
+                                       'free_coords': []
+                                      }
 
                     # Compute Train loss
-                    if val == False:
-                        try: 
-                            grads, loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val) 
-                            grads_to_average.append(grads)
-                            train_losses.append(loss)
-                        except RuntimeError as e:
-                            if 'out of memory' in str(e):
-                                print('Ran out of memory! Skipping batch')
-                                for p in self.local_we_worker.nnp.parameters():
-                                    if p.grad is not None:
-                                        del p.grad
-                                torch.cuda.empty_cache()
-                                continue
+                    try: 
+                        if val == False: 
+                            grads, loss, values_dict = self.local_we_worker.compute_gradients(**system_result, val=val) 
                             
-                    if val == True:
-                        _ , loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val)
-                        val_losses.append(loss)
-                    
+                            if grads is not None:
+                                grads_to_average.append(grads)                                
+                            train_losses.append(loss)
+                            
+                            # Save buffer
+                            if len(values_dict['native_coords']) > 0:
+                                lst_len = len(values_dict['native_coords'])
+                                if lst_len > 1:
+                                    self.buffers[s]['native_coords'] = list(itemgetter(*torch.multinomial(torch.ones(lst_len), num_samples=2))(values_dict['native_coords']))
+                                else:
+                                    self.buffers[s]['native_coords'] = [values_dict['native_coords'][0]]
+
+                            if len(values_dict['free_coords']) > 0:
+                                lst_len = len(values_dict['free_coords'])
+                                if lst_len > 1:
+                                    self.buffers[s]['free_coords'] = list(itemgetter(*torch.multinomial(torch.ones(lst_len), num_samples=2))(values_dict['free_coords']))
+                                else:
+                                    self.buffers[s]['native_coords'] = [values_dict['free_coords'][0]]
+                            
+                        if val == True:
+                            _ , loss, values_dict = self.local_we_worker.compute_gradients(**system_result, val=val)
+                            val_losses.append(loss)
+                            
+                    except RuntimeError as e:
+                        if 'out of memory' in str(e):
+                            print('Ran out of memory! Skipping batch')
+                            for p in self.local_we_worker.nnp.parameters():
+                                if p.grad is not None:
+                                    del p.grad
+                            torch.cuda.empty_cache()
+                            continue
+
                     # Save losses and Metric Values
-                    losses_dict[s] = values_dict['avg_metric']
-                    
                     if val == False:
-                        losses_dict['loss_1'].append(values_dict['loss_1'])
-                        if 'loss_2' in values_dict:
-                            losses_dict['loss_2'].append(values_dict['loss_2'])
+                        losses_dict['train_avg_metric'].append(values_dict['train_avg_metric'])
                     else:
-                        losses_dict['val_loss_1'].append(values_dict['val_loss_1'])
-                        if 'val_loss_2' in values_dict:
-                            losses_dict['val_loss_2'].append(values_dict['val_loss_2'])
+                        losses_dict['val_avg_metric'].append(values_dict['val_avg_metric'])
+
                     
                     torch.cuda.empty_cache()
-                
+                    
                 # Optim step
                 if len(grads_to_average) > 0:
                     grads_to_average = average_gradients(grads_to_average)
@@ -249,3 +266,4 @@ class Updater(Worker):
         return train_losses, val_losses, losses_dict
         
         
+
