@@ -98,23 +98,26 @@ class ProteinDataset(Dataset):
         for idx, rdm_list in enumerate(zip(*temp)):
             self.dataset[keys[idx]] = list(rdm_list)
     
-    def add_gaussian_noise(self, mu = 0.0, std = 0.1, sigma = 1.0):
+    def add_buffer_conf(self, buffer):
         
-        noisy_molecules = []
-        for mol in self.dataset.get('molecules'):
-            noise = np.array(torch.normal(mu, std, size=mol.coords.shape)).astype(mol.coords.dtype)
-            mol.coords = mol.coords + sigma * noise
-            noisy_molecules.append(mol)
-        self.dataset['molecules'] = noisy_molecules
+        for s in buffer.keys():
+            idx = self.dataset['names'].index(s)
+            
+            if len(self.dataset['native_ensemble'][idx]) == 10 and len(buffer[s]['native_coords']) > 0:
+                rdm_idx = torch.randint(1, self.dataset['native_ensemble'][idx].shape[0], (1,)).item()
+                rdm_n_idx = torch.randint(0, len(buffer[s]['native_coords']), (1,)).item()
+                self.dataset['native_ensemble'][idx][rdm_idx, :, :] = buffer[s]['native_coords'][rdm_n_idx].unsqueeze(0)
+                
+            elif len(buffer[s]['native_coords']) > 0:
+                rdm_idx = torch.randint(0, len(buffer[s]['native_coords']), (1,)).item()
+                self.dataset['native_ensemble'][idx] = torch.cat((self.dataset['native_ensemble'][idx], buffer[s]['native_coords'][rdm_idx].unsqueeze(0)))
+            
+            if self.dataset['free_ensemble'][idx] is None or len(self.dataset['free_ensemble'][idx]) <= 50:
+                
+                if len(buffer[s]['free_coords']) > 0:
+                    rdm_idx = torch.randint(0, len(buffer[s]['free_coords']), (1,)).item()
 
-    def noisy_replicas(self, replicas, mu = 0., std = 0.1, sigma = 1.0, chain = 'L'):
-
-        if replicas == 1: return
-
-        for mol in self.dataset.get('molecules'):
-            initial_coords = mol.coords[:,:,0]
-            natoms = mol.coords.shape[0]
-            if mol.coords.shape[-1] != replicas: mol.coords = np.tile(mol.coords[:,:,0,np.newaxis], (1, 1, replicas))
-            for replica in range(1, replicas):
-                noise = np.array(torch.normal(mu, std, size = (natoms, 3))).astype(mol.coords.dtype)
-                mol.coords[:,:,replica] = initial_coords + np.where(np.char.startswith(mol.chain, chain)[:,np.newaxis], noise, 0)
+                    if self.dataset['free_ensemble'][idx] is not None:
+                        self.dataset['free_ensemble'][idx] = torch.cat((self.dataset['free_ensemble'][idx], buffer[s]['free_coords'][rdm_idx].unsqueeze(0)))
+                    else:
+                        self.dataset['free_ensemble'][idx] = buffer[s]['free_coords'][rdm_idx].unsqueeze(0)

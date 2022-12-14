@@ -23,6 +23,7 @@ import random
 import os
 import copy
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import time
 
 def main():
     args = get_args()
@@ -39,7 +40,6 @@ def main():
     steps = args.steps
     output_period = args.output_period
     nstates = steps // output_period
-    sim_batch_size = args.sim_batch_size
     batch_size = args.batch_size
     lr = args.lr
     num_sim_workers = args.num_sim_workers
@@ -47,7 +47,7 @@ def main():
     # Define NNP
     nnp = NNP(args)        
     optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
-    scheduler = ReduceLROnPlateau(optim, 'min', factor=0.5, patience=2, threshold=0.01, min_lr=1e-6)
+    #scheduler = ReduceLROnPlateau(optim, 'min', factor=0.5, patience=2, threshold=0.01, min_lr=1e-6)
     
     # Save num_params
     input_file = open(os.path.join(args.log_dir, 'input.yaml'), 'a')
@@ -57,17 +57,11 @@ def main():
     # Load training molecules
     protein_factory = ProteinFactory()
     protein_factory.load_dataset(args.dataset)
-    #protein_factory.set_dataset_size(1000)
+    #protein_factory.set_dataset_size(15000)
 
     train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
     #dataset_names = protein_factory.get_names()
     dataset_names = []
-    
-    # Load test molecules
-    if args.test_set is not None:
-        protein_factory.load_dataset(args.test_set)
-        test_set, _ = protein_factory.train_val_split(val_size = 0.0)
-        test_set_size = len(test_set)
 
     train_set_size = len(train_set)
     val_set_size = len(val_set)
@@ -125,52 +119,61 @@ def main():
     learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir,
                       keys = args.keys)    
 
-    import time
     # 5. Define epoch and Levels
     epoch = 0        
     max_loss = args.max_loss
     stop = False
     
     while stop == False:
-        
+        epoch += 1
         train_set.shuffle()
                 
         # TRAIN STEP
-        b = 0
-        for i in range(0, train_set_size, sim_batch_size):
+        for i in range(0, train_set_size, batch_size):
 
-            b += 1
             start = time.perf_counter()
-            batch = copy.copy(train_set[ i : sim_batch_size + i])
-
-            learner.set_batch(batch)
-            learner.step()
-            end = time.perf_counter()
-            print(f'Batch {b} ... time per batch: ', end-start)
+            batch = train_set[ i : batch_size + i]
             
+            # Set the initial conformations of the batch   
+            start = time.perf_counter()
+            learner.set_batch(batch, sample='native_ensemble')
+            
+            learner.step()
+            
+            # Get the buffers
+            buffers = learner.get_buffers()
+            train_set.add_buffer_conf(buffers)
+            
+            end = time.perf_counter()
+            batch_avg_metric = learner.get_batch_avg_metric()
+            print(f'Train Batch {i//batch_size}, Time per batch: {end - start:.2f} , RMSD loss {batch_avg_metric:.2f}') 
+        
         # VAL STEP
-        epoch += 1
         if len(val_set) > 0:
             if (epoch == 1 or (epoch % args.val_freq) == 0):
-                for i in range(0, val_set_size, sim_batch_size):
-                    batch = val_set[ i : sim_batch_size + i]
+                for i in range(0, val_set_size, batch_size):
+                    batch = val_set[ i : batch_size + i]
                     learner.set_batch(batch)
                     learner.step(val=True)
-
+        
+        
         learner.compute_epoch_stats()
         learner.write_row()
         
         loss = learner.get_train_loss()
         avg_metric = learner.get_avg_metric()
-        #scheduler.step(val_loss)
-        
-        print(f'EPOCH {epoch}. Loss: {loss} RMSD loss {avg_metric}')
+                  
+        if len(val_set) > 0:
+            val_avg_metric = learner.get_avg_metric(val=True)
+        else:
+            val_avg_metric = None
+            
+        print(f'EPOCH {epoch}. Train RMSD loss {avg_metric}. Val RMSD loss {val_avg_metric}')
         
         if avg_metric is not None:
             if avg_metric < max_loss:
                 max_loss = avg_metric
                 learner.save_model()
-            
         else:
             if loss < max_loss:
                 max_loss = loss

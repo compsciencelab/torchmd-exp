@@ -46,8 +46,8 @@ class SimWorker(Worker):
     def get_ground_truth(self, gt_idx):
         return self.simulator.get_ground_truth(gt_idx)
 
-    def set_batch(self, batch):
-        self.simulator.set_batch(batch)
+    def set_batch(self, batch, sample):
+        self.simulator.set_batch(batch, sample)
         
     def get_nnp(self):
         return self.nnp

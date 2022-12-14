@@ -29,16 +29,16 @@ class Learner:
         
         # Train losses of each batch
         self.train_losses = []
+        self.train_avg_metrics = []
         self.val_losses = []
-        self.test_losses = []
+        self.val_avg_metrics = []
         
-        # Individual Losses of the epoch
-
 
         # Losses of the epoch
         self.train_loss = None
         self.val_loss = None
-        self.test_loss = None
+        self.train_avg_metric = None
+        self.val_avg_metric = None
         
         # Level, epoch and LR
         self.level = 0
@@ -47,14 +47,10 @@ class Learner:
         
         # Prepare results dict
         self.results_dict = {key: 0 for key in keys}
-        if len(self.train_names) > 0:
-            for name in self.train_names:
-                self.results_dict[name] = None
-        
-        #self.results_dict.update(total_dict)
         
         keys = tuple([key for key in self.results_dict.keys()])
         self.logger = LogWriter(self.log_dir,keys=keys)
+        self.step_logger = LogWriter(self.log_dir, keys=keys, monitor='step_monitor.csv')
         
     def step(self, val=False, mode='val'):
         """ Takes an optimization update step """
@@ -63,15 +59,14 @@ class Learner:
         info = self.update_worker.step(self.steps, self.output_period, val)
         
         if val == True:
-            if mode == 'test':
-                self.test_losses.append(info['val_loss'])
+            self.val_losses.append(info['val_loss'])
+            self.val_avg_metrics.append(info['val_avg_metric'])
         else:
             self.train_losses.append(info['train_loss'])
+            self.train_avg_metrics.append(info['train_avg_metric'])
         
-        [info.pop(k, None) for k in ['train_loss', 'val_loss', 'test_loss', 'loss_1', 'loss_2', 'val_loss_1', 'val_loss_2']]
-        
-        self.avg_metric = info['avg_metric']
-        self.results_dict.update(info)
+        self.step_logger.write_row(info)
+
 
     def level_up(self):
         """ Increases level of difficulty """
@@ -86,9 +81,9 @@ class Learner:
     def get_init_state(self):
         return self.update_worker.get_init_state()
     
-    def set_batch(self, batch):
+    def set_batch(self, batch, sample='native_ensemble'):
         """ Change batch data """
-        self.update_worker.set_batch(batch)
+        self.update_worker.set_batch(batch, sample)
     
     def set_steps(self, steps):
         """ Change number of simulation steps """
@@ -112,7 +107,10 @@ class Learner:
         
         # Compute train loss
         self.train_loss = mean(self.train_losses)
+        self.train_avg_metric = mean(self.train_avg_metrics)
         self.results_dict['train_loss'] = self.train_loss
+        self.results_dict['train_avg_metric'] = self.train_avg_metric
+        
         self.results_dict['lr'] = self.update_worker.updater.local_we_worker.weighted_ensemble.optimizer.param_groups[0]['lr']
         
         # Update epoch
@@ -128,26 +126,17 @@ class Learner:
         if 'val_loss' in self.keys:
             if len(self.val_losses) > 0:
                 self.val_loss = mean(self.val_losses)
+                self.val_avg_metric = mean(self.val_avg_metrics)
                 self.results_dict['val_loss'] = self.val_loss
+                self.results_dict['val_avg_metric'] = self.val_avg_metric
             else:
                 self.results_dict['val_loss'] = None
-        
-        # Compute test loss
-        if 'test_loss' in self.keys:
-            if len(self.test_losses) > 0:
-                self.test_loss = mean(self.test_losses)
-                self.results_dict['test_loss'] = self.test_loss
-            else:
-                self.results_dict['test_loss'] = None
-        
+                
         # Reset everything
         self.train_losses = []
+        self.train_avg_metrics = []
         self.val_losses = []
-        self.test_losses = []
-        self.loss_1 = []
-        self.loss_2 = []
-        self.val_loss_1 = []
-        self.val_loss_2 = []
+        self.val_avg_metrics = []
         
     def write_row(self):
         if self.logger:
@@ -156,11 +145,23 @@ class Learner:
     def get_val_loss(self):
         return self.val_loss
     
-    def get_avg_metric(self):
-        return self.avg_metric
+    def get_batch_avg_metric(self, val=False):
+        if val == False:
+            return self.train_avg_metrics[-1]
+        else:
+            return self.val_avg_metrics[-1]
+    
+    def get_avg_metric(self, val=False):
+        if val == False:
+            return self.train_avg_metric
+        else:
+            return self.val_avg_metric
     
     def get_train_loss(self):
         return self.train_loss
     
     def set_lr(self, lr):
         self.update_worker.set_lr(lr)
+
+    def get_buffers(self):
+        return self.update_worker.get_buffers()

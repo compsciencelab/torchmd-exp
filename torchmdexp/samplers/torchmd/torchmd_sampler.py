@@ -276,7 +276,10 @@ class TorchMD_Sampler(Sampler):
         self.mols = batch.get('molecules')
         
         for mol, init_state in zip(self.mols, batch.get(sample)):
-            mol.coords = np.array(init_state.squeeze(0)[:, :, None])            
+            rdm_idx = torch.randint(0, init_state.shape[0], (1,)).item()
+            init_state = init_state[rdm_idx, :, :].unsqueeze(0)
+            mol.coords = np.array(init_state.squeeze(0)[:, :, None])   
+            
         self.init_coords = self.set_init_state(self.mols)
         
         self.sim_dict['names'] = self.names

@@ -77,23 +77,25 @@ class CD:
         
         native_ensemble = []
         free_ensemble = []
-        avg_metric = []        
+        free_coords = []
+        avg_metric = []
         
         for state in states:
-            rmsd_value = rmsd(state, crystal)
+            rmsd_value, align_state = rmsd(state, crystal)
             avg_metric.append(rmsd_value.item())
+            
             if rmsd_value.item() <= 1.0:
-                native_ensemble.append(state)
-            else:
-                free_ensemble.append(state)
+                native_ensemble.append(align_state)
+                
+            elif rmsd_value.item() <= 25.0:
+                free_coords.append(align_state)
         
-        native_ensemble = torch.stack(native_ensemble)
-        free_ensemble = torch.stack(free_ensemble)        
-
-        return native_ensemble, free_ensemble, mean(avg_metric)
+        free_ensemble = states[states.shape[0]//2:, :, :]
+        
+        return native_ensemble, free_ensemble, free_coords, mean(avg_metric)
     
     def compute_ensemble_energy(self, ensemble, embeddings):
-        
+
         pos = ensemble.to(self.device).type(torch.float32).reshape(-1, 3)
         embeddings_nnp = embeddings[0].repeat(ensemble.shape[0], 1)
         batch = torch.arange(embeddings_nnp.size(0), device=self.device).repeat_interleave(
@@ -108,40 +110,49 @@ class CD:
     def compute_loss(self, crystal, native_ensemble, states, embeddings):
         
         values_dict = {}
+        native_coords, free_ensemble, free_coords, avg_metric = self.split_restrained_free(states, crystal)
         
-        native_coords, free_ensemble, avg_metric = self.split_restrained_free(states, crystal)
-                
+        
         native_energy, free_energy = self.compute_ensemble_energy(native_ensemble, embeddings), self.compute_ensemble_energy(free_ensemble, embeddings)
         
-        loss = native_energy - free_energy
+        if avg_metric < 2.0:
+            loss = torch.tensor(0.0, device = self.device)
+        else:
+            loss = native_energy - free_energy
         
-        #values_dict['loss_1'] = loss.item()
         values_dict['avg_metric'] = avg_metric
         values_dict['native_coords'] = native_coords
-        values_dict['free_coords'] = free_ensemble
+        values_dict['free_coords'] = free_coords
         
         return loss, values_dict
 
     
     def compute_gradients(self, crystal, native_ensemble, states, embeddings,  grads_to_cpu=True, val=False):
+
         if val == False:
             self.optimizer.zero_grad()
             loss, values_dict = self.compute_loss(crystal, native_ensemble, states, embeddings)
-            loss.backward()
+            values_dict['train_avg_metric'] = values_dict['avg_metric']
 
-            grads = []
-            for p in self.nnp.parameters():
-                if grads_to_cpu:
-                    if p.grad is not None: grads.append(p.grad.data.cpu().numpy())
-                    else: grads.append(None)
-                else:
-                    if p.grad is not None:
-                        grads.append(p.grad)
+            if loss != 0.0:
+                loss.backward()
+                grads = []
+                for p in self.nnp.parameters():
+                    if grads_to_cpu:
+                        if p.grad is not None: grads.append(p.grad.data.cpu().numpy())
+                        else: grads.append(None)
+                    else:
+                        if p.grad is not None:
+                            grads.append(p.grad)
+            else:
+                grads = None
+                
         elif val == True:
             grads = None
             loss, values_dict = self.compute_loss(crystal, native_ensemble, states, embeddings)
             loss = loss.detach()
-
+            values_dict['val_avg_metric'] = values_dict['avg_metric']
+        
         return grads, loss.item(), values_dict
     
     def apply_gradients(self, gradients):

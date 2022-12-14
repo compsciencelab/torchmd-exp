@@ -38,5 +38,5 @@ def rmsd(c1, c2, *args):
     rot_P = torch.matmul(rot, P)
     diffs = rot_P - Q
     msd = (diffs ** 2).sum() / diffs.size(1)
-    
-    return msd.sqrt()
+
+    return msd.sqrt(), torch.swapaxes(Q, 0, 1)

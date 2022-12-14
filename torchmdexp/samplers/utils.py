@@ -59,7 +59,7 @@ def moleculekit_system_factory(num_workers):
         
     return systems, worker_info
 
-def create_system(molecules, dist = 200):
+def create_system(molecules, dist = 1000):
     """
     Return a system with multiple molecules separated by a given distance. 
     
