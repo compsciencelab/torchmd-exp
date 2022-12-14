@@ -209,11 +209,20 @@ class Updater(Worker):
                     system_result = {key:sim_dict[key][idx] if sim_dict[key] else None for key in sim_dict.keys()}
 
                     # Compute Train loss
-                    if val == False: 
-                        grads, loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val)
-                        grads_to_average.append(grads)
-                        train_losses.append(loss)
-                    
+                    if val == False:
+                        try: 
+                            grads, loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val) 
+                            grads_to_average.append(grads)
+                            train_losses.append(loss)
+                        except RuntimeError as e:
+                            if 'out of memory' in str(e):
+                                print('Ran out of memory! Skipping batch')
+                                for p in self.local_we_worker.nnp.parameters():
+                                    if p.grad is not None:
+                                        del p.grad
+                                torch.cuda.empty_cache()
+                                continue
+                            
                     if val == True:
                         _ , loss, values_dict = self.local_we_worker.compute_gradients(**system_result, nnp_prime=nnp_prime, val=val)
                         val_losses.append(loss)
