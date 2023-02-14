@@ -47,7 +47,7 @@ def main():
     # Define NNP
     nnp = NNP(args)        
     optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
-    #scheduler = ReduceLROnPlateau(optim, 'min', factor=0.5, patience=2, threshold=0.01, min_lr=1e-6)
+    scheduler = ReduceLROnPlateau(optim, 'min', factor=0.9, patience=100, threshold=0.01, min_lr=1e-4)
     
     # Save num_params
     input_file = open(os.path.join(args.log_dir, 'input.yaml'), 'a')
@@ -57,7 +57,7 @@ def main():
     # Load training molecules
     protein_factory = ProteinFactory()
     protein_factory.load_dataset(args.dataset)
-    #protein_factory.set_dataset_size(15000)
+    #protein_factory.set_dataset_size(100)
 
     train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
     #dataset_names = protein_factory.get_names()
@@ -139,15 +139,15 @@ def main():
             learner.set_batch(batch, sample='native_ensemble')
             
             learner.step()
-            
-            # Get the buffers
-            buffers = learner.get_buffers()
-            train_set.add_buffer_conf(buffers)
-            
+                        
             end = time.perf_counter()
             batch_avg_metric = learner.get_batch_avg_metric()
+            scheduler.step(batch_avg_metric)
             print(f'Train Batch {i//batch_size}, Time per batch: {end - start:.2f} , RMSD loss {batch_avg_metric:.2f}') 
-        
+            
+            #buffers = learner.get_buffers()
+            #train_set.add_buffer_conf(buffers)
+            
         # VAL STEP
         if len(val_set) > 0:
             if (epoch == 1 or (epoch % args.val_freq) == 0):

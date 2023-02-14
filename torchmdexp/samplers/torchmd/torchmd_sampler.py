@@ -243,7 +243,7 @@ class TorchMD_Sampler(Sampler):
             states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
             Ekin, Epot, T = integrator.step(niter=output_period)
             
-
+        states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
         sample_dict = self._split_states(states, sample_dict)          
 
         self.sim_dict.update(sample_dict)
@@ -277,7 +277,7 @@ class TorchMD_Sampler(Sampler):
         
         for mol, init_state in zip(self.mols, batch.get(sample)):
             rdm_idx = torch.randint(0, init_state.shape[0], (1,)).item()
-            init_state = init_state[rdm_idx, :, :].unsqueeze(0)
+            init_state = init_state[0, :, :].unsqueeze(0)
             mol.coords = np.array(init_state.squeeze(0)[:, :, None])   
             
         self.init_coords = self.set_init_state(self.mols)

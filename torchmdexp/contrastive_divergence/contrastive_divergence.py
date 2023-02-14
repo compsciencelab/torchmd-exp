@@ -4,6 +4,9 @@ import numpy as np
 import time
 from torchmdexp.metrics.rmsd import rmsd
 from statistics import mean
+from torch.nn.functional import mse_loss, l1_loss
+
+BOLTZMAN = 0.001987191
 
 class CD:
     def __init__(
@@ -82,15 +85,14 @@ class CD:
         
         for state in states:
             rmsd_value, align_state = rmsd(state, crystal)
-            avg_metric.append(rmsd_value.item())
             
             if rmsd_value.item() <= 1.0:
                 native_ensemble.append(align_state)
-                
             elif rmsd_value.item() <= 25.0:
                 free_coords.append(align_state)
         
-        free_ensemble = states[states.shape[0]//2:, :, :]
+        avg_metric.append(rmsd_value.item())
+        free_ensemble = states[-1:, :, :]
         
         return native_ensemble, free_ensemble, free_coords, mean(avg_metric)
     
@@ -112,13 +114,13 @@ class CD:
         values_dict = {}
         native_coords, free_ensemble, free_coords, avg_metric = self.split_restrained_free(states, crystal)
         
-        
         native_energy, free_energy = self.compute_ensemble_energy(native_ensemble, embeddings), self.compute_ensemble_energy(free_ensemble, embeddings)
         
-        if avg_metric < 2.0:
+        if avg_metric < 0.01:
             loss = torch.tensor(0.0, device = self.device)
         else:
             loss = native_energy - free_energy
+
         
         values_dict['avg_metric'] = avg_metric
         values_dict['native_coords'] = native_coords
