@@ -61,12 +61,12 @@ def main():
     dataset_names = []
     
     # Load test molecules
-    protein_factory.load_dataset(args.test_set)
-    test_set, _ = protein_factory.train_val_split(val_size = 0.0)
+    #protein_factory.load_dataset(args.test_set)
+    #test_set, _ = protein_factory.train_val_split(val_size = 0.0)
     
     train_set_size = len(train_set)
     val_set_size = len(val_set)
-    test_set_size = len(test_set)
+    #test_set_size = len(test_set)
         
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
