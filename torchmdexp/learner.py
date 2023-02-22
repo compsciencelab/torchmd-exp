@@ -64,7 +64,7 @@ class Learner:
         else:
             self.train_losses.append(info['train_loss'])
             self.train_avg_metrics.append(info['train_avg_metric'])
-        
+            
         self.step_logger.write_row(info)
 
 

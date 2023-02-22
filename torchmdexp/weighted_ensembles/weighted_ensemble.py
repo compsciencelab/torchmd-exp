@@ -99,7 +99,7 @@ class WeightedEnsemble:
                       )
         return create_weighted_ensemble_instance
     
-    def _extEpot(self, states, embeddings, nnp_prime, mode="train"):
+    def _extEpot(self, states, embeddings, mode="train"):
         
         batch_num = states.shape[0] // self.replicas
         ext_energies, ext_energies_hat = torch.tensor([], device=self.device), torch.tensor([], device=self.device)
@@ -116,25 +116,20 @@ class WeightedEnsemble:
             embeddings_nnp = embeddings_nnp.reshape(-1).to(self.device)
                     
             # Compute external energies
-            if nnp_prime == None:
-                batch_ext_energies, _ = self.nnp(embeddings_nnp, pos, batch)
-                batch_ext_energies_hat = batch_ext_energies.detach()
-                del _
-            else:
-                batch_ext_energies_hat , _ = nnp_prime(embeddings_nnp, pos, batch)
-                batch_ext_energies_hat.detach()
-                del _
-                batch_ext_energies, _ = self.nnp(embeddings_nnp, pos, batch)
-                del _
+            
+            batch_ext_energies, _ = self.nnp(embeddings_nnp, pos, batch)
+            batch_ext_energies_hat = batch_ext_energies.detach()
+            
             ext_energies = torch.cat((ext_energies, batch_ext_energies), axis=0)
             ext_energies_hat = torch.cat((ext_energies_hat, batch_ext_energies_hat), axis=0)
 
         return ext_energies.squeeze(1), ext_energies_hat.squeeze(1)
                        
-    def _weights(self, states, embeddings, U_prior, nnp_prime):
+    def _weights(self, states, embeddings):
         
         # Compute external Epot and create a new eternal Epot detached 
-        U_ext, U_ext_hat = self._extEpot(states, embeddings, nnp_prime, mode="train")
+        U_ext, U_ext_hat = self._extEpot(states, embeddings, mode="train")
+        
         #U_ext_hat = nnp_prime.detach()
         U_arg = -torch.divide(torch.subtract(U_ext, U_ext_hat), self.T*BOLTZMAN)
 
@@ -144,6 +139,7 @@ class WeightedEnsemble:
 
         exponentials = torch.exp(U_arg)
         weights = torch.divide(exponentials, exponentials.sum())
+        
         return weights, U_ext_hat
     
     def _effectiven(self, weights):
@@ -153,56 +149,40 @@ class WeightedEnsemble:
         
         return neff
     
-    def compute_we(self, states, mols, ground_truths, embeddings, U_prior, nnp_prime, neff_threshold=None):
+    def compute_we(self, states, crystal, embeddings, neff_threshold=None):
         
-        weights, U_ext_hat = self._weights(states, embeddings, U_prior, nnp_prime)
+        weights, U_ext_hat = self._weights(states, embeddings)
 
         n = len(weights)
         
         # Compute the weighted ensemble of the conformations 
         states = states.to(self.device)
-
-        obs = torch.tensor([self.metric(state, ground_truths, mols) for state in states], device = self.device, dtype = self.precision)
+                
+        obs = torch.tensor([self.metric(state, crystal) for state in states], device = self.device, dtype = self.precision)
 
         obs = torch.where(obs > 10e6, torch.tensor(10e6, device = self.device, dtype = self.precision), obs)
         avg_metric = torch.mean(obs).detach().item()
         
         w_ensemble = torch.multiply(weights, obs).sum(0) 
-        
+                
         return w_ensemble, avg_metric
     
 
-    def compute_loss(self, ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = None, y = None, val=False):
+    def compute_loss(self, crystal, states, embeddings, val=False):
         
-        w_e, avg_metric = self.compute_we(states, mols, ground_truths, embeddings, U_prior, nnp_prime)
+        w_e, avg_metric = self.compute_we(states, crystal, embeddings)
         values_dict = {}
         we_loss = self.loss_fn(w_e)
         
         if val == False:
+            loss = we_loss
+            values_dict['loss_2'] = None
         
-            if self.energy_weight == 0:
-                loss = we_loss
-                values_dict['loss_2'] = None
-
-            else:
-                N = embeddings.shape[1]
-                energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime, N)  
-                
-                loss = we_loss + self.energy_weight * energy_loss
-                values_dict['loss_2'] = energy_loss.item()
             values_dict['loss_1'] = we_loss.item()
             
         else:
-            if x is None:
-                loss = we_loss
-                values_dict['val_loss_2'] = None
-                
-            else:
-                N = embeddings.shape[1]
-                energy_loss = self.compute_energy_loss(x, y, embeddings, nnp_prime, N)  
-                loss = we_loss + energy_loss
-                values_dict['val_loss_2'] = energy_loss.item()
-            
+            loss = we_loss
+            values_dict['val_loss_2'] = None
             values_dict['val_loss_1'] = we_loss.item()
                         
         values_dict['avg_metric'] = avg_metric
@@ -232,26 +212,30 @@ class WeightedEnsemble:
         elif y.shape[-1] == 3:
             l1_loss(y, forces)/(3*N)        
     
-    def compute_gradients(self, names, mols, ground_truths, states, embeddings, U_prior, nnp_prime, x = None, y = None, grads_to_cpu=True, val=False):
+    def compute_gradients(self, crystal, native_ensemble, states, embeddings,  grads_to_cpu=True, val=False):
         if val == False:
             self.optimizer.zero_grad()
-            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), self.max_grad_norm)
+            loss, values_dict = self.compute_loss(crystal, states, embeddings)
+            values_dict['train_avg_metric'] = values_dict['avg_metric']
 
-
-            grads = []
-            for p in self.nnp.parameters():
-                if grads_to_cpu:
-                    if p.grad is not None: grads.append(p.grad.data.cpu().numpy())
-                    else: grads.append(None)
-                else:
-                    if p.grad is not None:
-                        grads.append(p.grad)
+            if loss != 0.0:
+                loss.backward()
+                grads = []
+                for p in self.nnp.parameters():
+                    if grads_to_cpu:
+                        if p.grad is not None: grads.append(p.grad.data.cpu().numpy())
+                        else: grads.append(None)
+                    else:
+                        if p.grad is not None:
+                            grads.append(p.grad)
+            else:
+                grads = None
+                
         elif val == True:
             grads = None
-            loss, values_dict = self.compute_loss(ground_truths, mols, states, embeddings, U_prior, nnp_prime, x = x, y = y, val=val)
+            loss, values_dict = self.compute_loss(crystal, native_ensemble, states, embeddings)
             loss = loss.detach()
+            values_dict['val_avg_metric'] = values_dict['avg_metric']
 
         return grads, loss.item(), values_dict
         
