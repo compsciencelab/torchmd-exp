@@ -1,0 +1,27 @@
+device: cuda:0
+forcefield: ca_priors-dihedrals_general_2xweaker.yaml
+forceterms:
+- Bonds
+- RepulsionCG
+- Dihedrals
+exclusions: ('bonds')
+langevin_gamma: 1
+langevin_temperature: 298
+log_dir: csm_50/cln_64trajs_298_ts1
+output: output
+output_period: 1000
+precision: double
+replicas: 64
+rfa: false
+save_period: 1000
+seed: 10
+steps: 100000000
+topology: ../data/test/topology/cln_ca_top_dih.psf
+coordinates: ../data/test/starting_points/cln_kcenters_64clusters_coords.xtc
+
+temperature: 298
+timestep: 1
+external:
+  module: torchmdexp.nnp.calculators
+  embeddings: [4, 4, 5, 8, 6, 13, 2, 13, 7, 4]
+  file: ../data/models/csm_50/epoch=35-train_loss=0.8814-val_loss=0.8824.ckpt

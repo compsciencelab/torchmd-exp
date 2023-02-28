@@ -1,0 +1,49 @@
+activation: tanh
+batch_size: 12
+sim_batch_size: 12
+num_sim_workers: 1
+num_gpus: 1
+num_cpus: 8
+local_worker: True
+
+cutoff_lower: 3.0
+cutoff_upper: 9.0
+cutoff: 9
+
+dataset: 'fastfolders/ff.npy'
+derivative: True
+device: 'cuda:0'
+embedding_dimension: 256
+exclusions: 
+    - bonds
+forcefield: ca_priors-dihedrals_general_2xweaker.yaml
+
+forceterms: 
+    - bonds
+    - repulsioncg 
+    - dihedrals
+    
+keys: 
+    - epoch
+    - steps 
+    - lr
+    - train_loss
+    - train_avg_metric
+    - val_loss
+    
+lr: 1.e-4
+
+max_loss: 3.0
+val_freq: 0.0
+val_size: 0.0
+
+log_dir: fastfolders/logs
+
+steps: 1024
+output_period: 8
+
+num_layers: 1
+seed: 1
+timestep: 5
+temperature: 298
+margin: -1.0
