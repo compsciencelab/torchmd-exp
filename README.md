@@ -31,9 +31,9 @@ This repository contains a method for training a neural network potential for co
 
 This repository contains:
 
-    * Instructions to build the datasets associated with the paper.
-    * Code for training and evaluating the Neural Network Potentials
-    * Tutorials for using the code and resources
+- Code for training and evaluating neural network potentials
+- Instructions to download datasets and trained models
+- Tutorials for using the code and resources
 
 
 Yaml file used for the simulation:
