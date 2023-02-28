@@ -1,0 +1,59 @@
+MODEL        1
+ATOM      1  CA  GLU     1     -13.830   6.500   3.490  0.00  0.00      A    H  
+ATOM      2  CA  GLN     2     -10.610   7.220   1.530  0.00  0.00      A    H  
+ATOM      3  CA  TYR     3      -9.520   5.230  -1.560  0.00  0.00      A    H  
+ATOM      4  CA  THR     4      -9.560   1.420  -1.200  0.00  0.00      A    H  
+ATOM      5  CA  ALA     5      -6.380   0.660  -3.210  0.00  0.00      A    H  
+ATOM      6  CA  LYS     6      -5.620  -3.080  -3.060  0.00  0.00      A    H  
+ATOM      7  CA  TYR     7      -2.200  -4.650  -3.680  0.00  0.00      A    H  
+ATOM      8  CA  LYS     8      -1.620  -8.030  -1.980  0.00  0.00      A    H  
+ATOM      9  CA  GLY     9      -5.080  -8.790  -0.540  0.00  0.00      A    H  
+ATOM     10  CA  ARG    10      -4.840  -5.600   1.570  0.00  0.00      A    H  
+ATOM     11  CA  THR    11      -6.790  -2.390   0.830  0.00  0.00      A    H  
+ATOM     12  CA  PHE    12      -4.860   0.840   1.570  0.00  0.00      A    H  
+ATOM     13  CA  ARG    13      -6.650   3.760   3.280  0.00  0.00      A    H  
+ATOM     14  CA  ASN    14      -3.570   5.910   3.990  0.00  0.00      A    H  
+ATOM     15  CA  GLU    15      -0.800   7.350   1.780  0.00  0.00      A    H  
+ATOM     16  CA  LYS    16       1.750   6.620   4.550  0.00  0.00      A    H  
+ATOM     17  CA  GLU    17       1.030   2.890   4.220  0.00  0.00      A    H  
+ATOM     18  CA  LEU    18       0.960   2.710   0.390  0.00  0.00      A    H  
+ATOM     19  CA  ARG    19       4.130   4.860   0.190  0.00  0.00      A    H  
+ATOM     20  CA  ASP    20       5.790   2.190   2.400  0.00  0.00      A    H  
+ATOM     21  CA  PHE    21       4.160  -0.950   0.900  0.00  0.00      A    H  
+ATOM     22  CA  ILE    22       4.940  -0.670  -2.860  0.00  0.00      A    H  
+ATOM     23  CA  GLU    23       8.300   0.780  -1.770  0.00  0.00      A    H  
+ATOM     24  CA  LYS    24       9.010  -2.400   0.230  0.00  0.00      A    H  
+ATOM     25  CA  PHE    25       7.280  -5.070  -1.890  0.00  0.00      A    H  
+ATOM     26  CA  LYS    26       8.640  -3.620  -5.170  0.00  0.00      A    H  
+ATOM     27  CA  GLY    27       8.840  -7.200  -6.510  0.00  0.00      A    H  
+ATOM     28  CA  ARG    28      12.240  -8.960  -6.570  0.00  0.00      A    H  
+CONECT    1    2
+CONECT    2    1    3
+CONECT    3    2    4
+CONECT    4    3    5
+CONECT    5    4    6
+CONECT    6    5    7
+CONECT    7    6    8
+CONECT    8    7    9
+CONECT    9    8   10
+CONECT   10    9   11
+CONECT   11   10   12
+CONECT   12   11   13
+CONECT   13   12   14
+CONECT   14   13   15
+CONECT   15   14   16
+CONECT   16   15   17
+CONECT   17   16   18
+CONECT   18   17   19
+CONECT   19   18   20
+CONECT   20   19   21
+CONECT   21   20   22
+CONECT   22   21   23
+CONECT   23   22   24
+CONECT   24   23   25
+CONECT   25   24   26
+CONECT   26   25   27
+CONECT   27   26   28
+CONECT   28   27
+ENDMDL
+END

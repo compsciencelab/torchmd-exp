@@ -7,8 +7,6 @@ nohup.out
 torchmd_exp.egg-info/
 scripts/trainings
 scripts/simulations
-data/csm_50_dataset/csm_dataset_69k_50.npy
-data/
 .nfs*
 scripts/utils/test_sim.ipynb
 build/
