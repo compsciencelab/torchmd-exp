@@ -1,3 +1,0 @@
-http://bioinfo.dcc.ufmg.br/propedia/public/pdb/structures/complex/3hpj_F_D.pdb D/98 F/6
-http://bioinfo.dcc.ufmg.br/propedia/public/pdb/structures/complex/1u38_B_A.pdb A/33 B/-2
-http://bioinfo.dcc.ufmg.br/propedia/public/pdb/structures/complex/4gw1_E_A.pdb E/9 A/84
