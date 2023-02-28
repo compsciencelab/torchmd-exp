@@ -59,9 +59,10 @@ def main():
     train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
     #dataset_names = protein_factory.get_names()
     dataset_names = []
-
+    
     train_set_size = len(train_set)
     val_set_size = len(val_set)
+    
         
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,

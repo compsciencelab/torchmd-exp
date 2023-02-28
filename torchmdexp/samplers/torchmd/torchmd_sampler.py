@@ -1,15 +1,12 @@
 from ..base import Sampler
 from ..utils import get_embeddings, create_system
-import torch
 from torchmd.forcefields.forcefield import ForceField
 from torchmd.forces import Forces
 from torchmd.integrator import Integrator, maxwell_boltzmann
 from torchmd.parameters import Parameters
 from torchmd.systems import System
 from torchmdexp.nnp.calculators import External
-import collections
-import copy
-import os
+import collections, copy, os, logging, torch
 import numpy as np
 
 
@@ -117,6 +114,7 @@ class TorchMD_Sampler(Sampler):
         self.sim_dict = collections.defaultdict(dict)
 
         self.log_dir = log_dir
+        self.logger = logging.getLogger(__name__)
         
         
     @classmethod
@@ -204,7 +202,7 @@ class TorchMD_Sampler(Sampler):
         return create_sampler_instance
 
             
-    def simulate(self, steps, output_period):
+    def simulate(self, steps, output_period, use_network=True):
         """
         Function to run a simulation of the system, and sample a given number of states with their prior energies 
         from the trajectory.
@@ -224,8 +222,9 @@ class TorchMD_Sampler(Sampler):
         """
             
         # Iterator and start computing forces
-        iterator = range(1,int(steps/output_period)+1)            
-        integrator = self._set_integrator(self.mols, self.lengths)
+        self.logger.debug('Obtaining integrator')
+        iterator = range(1,int(steps/output_period)+1)
+        integrator = self._set_integrator(self.mols, self.lengths, use_network)
         
         # Define the states
         nstates = int(steps // output_period) * self.replicas
@@ -239,6 +238,7 @@ class TorchMD_Sampler(Sampler):
         sample_dict['states'] = []
         
         # Run the simulation
+        self.logger.debug(f'Running simulation with {self.replicas} replicas and saving states ({states.shape})')
         for i in iterator:
             states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
             Ekin, Epot, T = integrator.step(niter=output_period)
@@ -286,17 +286,22 @@ class TorchMD_Sampler(Sampler):
         self.sim_dict['native_ensemble'] = batch.get('native_ensemble')
         self.sim_dict['crystal'] = batch.get('crystal')
                 
-    def _set_integrator(self, mols, lengths):
-        
+    def _set_integrator(self, mols, lengths):        
         # Create simulation system
+        self.logger.debug(f'Creating system from batch of size {len(mols)}')
         mol = create_system(mols)
         
         if self.init_coords is not None:
+            self.logger.debug('Overwrite init coords')
             mol.coords = self.init_coords
         
         # Create embeddings and the external force
         embeddings = get_embeddings(mol, self.device, self.replicas, self.multichain_emb)
-        external = External(self.nnp, embeddings, device = self.device)
+        if use_network:
+            external = External(self.nnp, embeddings, device = self.device)
+        else:
+            external = None
+        self.logger.debug(f'Got embeddings ({embeddings.shape}) but not external force from nnp')
         
         # Add the embeddings to the sim_dict
         my_e = embeddings 
@@ -306,16 +311,18 @@ class TorchMD_Sampler(Sampler):
             self.sim_dict['embeddings'].append(mol_embeddings.to('cpu'))     
 
         # Create forces
+        self.logger.debug(f'Reading forcefield of type {self.ff_type}')
         if self.ff_type == 'file':
             ff = ForceField.create(mol, self.forcefield)        
-                             
         parameters = Parameters(ff, mol, terms=self.forceterms, device=self.device) 
         
+        self.logger.debug('Creating Forces')
         forces = Forces(parameters,terms=self.forceterms, external=external, cutoff=self.cutoff, 
                              rfa=self.rfa, switch_dist=self.switch_dist, exclusions = self.exclusions
                         )
         
         # Create the system
+        self.logger.debug('Creating system')
         system = System(mol.numAtoms, nreplicas=self.replicas, precision = self.precision, device=self.device)
         system.set_positions(mol.coords)
         system.set_box(np.tile(mol.box, self.replicas))
@@ -323,7 +330,8 @@ class TorchMD_Sampler(Sampler):
         
         integrator = Integrator(system, forces, self.timestep, gamma = self.langevin_gamma, 
                                 device = self.device, T= self.langevin_temperature)
-                
+        self.logger.debug('Integrator finished')
+        
         return integrator
 
     def _split_states(self, states, sample_dict):

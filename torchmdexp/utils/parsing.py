@@ -83,6 +83,7 @@ def get_args():
     parser.add_argument('--test-freq', default=50, type=float, help='After how many epochs do a test simulation')
     parser.add_argument('--precision', type=int, default=32, choices=[16, 32], help='Floating point precision')
     parser.add_argument('--log-dir', '-l', default='/trainings', help='log file')
+    parser.add_argument('--debug-level', type=str, default='info', help='Debug level used in file.')
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
     parser.add_argument('--keys', type=tuple, default=('epoch', 'steps', 'train_loss', 'val_loss'), help='Keys that you want to save in the montior')
 
@@ -111,6 +112,7 @@ def get_args():
 
     # dataset specific
     parser.add_argument('--num-levels', default=None, help='How many levels to use including the 0th level')
+    parser.add_argument('--levels-from', default='traj', choices=['traj', 'files'], help='Get the levels from files or from a trajectory of level 0')
     parser.add_argument('--levels_dir', default=None, help='Directory with levels folders. Which contains different levels of difficulty')
     parser.add_argument('--thresh-lvlup', default=5.0, type=float, help='Loss value to get before leveling up')
     parser.add_argument('--dataset',  default=None, help='File with the dataset')
@@ -133,12 +135,15 @@ def get_args():
     parser.add_argument('--max_steps',type=int,default=400,help='Max Total number of simulation steps')
     parser.add_argument('--output-period',type=int,default=100,help='Pick one state every period')
     parser.add_argument('--energy_weight',  default=0.0,type=float, help='Weight assigned to the deltaenergy regularizer loss')
+    parser.add_argument('--var_weight', default=0.0, type=float, help='Weight assigned to the variance regularizer loss')
     parser.add_argument('--forcefield', default="/shared/carles/torchmd-exp/data/ca_priors-dihedrals_general_2xweaker.yaml", help='Forcefield .yaml file')
     parser.add_argument('--ff_type', type=str, choices=['file', 'full_pseudo_receptor'], default='file', help='Type of forcefield to use')
     parser.add_argument('--ff_pseudo_scale', type=float, default=1, help='Value that divides pseudobond strength')
     parser.add_argument('--ff_full_scale', type=float, default=1, help='Value that divides all bonds strength')
     parser.add_argument('--forceterms', nargs='+', default=[], help='Forceterms to include, e.g. --forceterms Bonds LJ')
     parser.add_argument('--multichain_emb', type=bool, default=False, help='Determines whether to use unique embeddings for the ligand or not')
+    parser.add_argument('--use_net_train', default=True, type=bool, help='Use network during training simulations')
+    parser.add_argument('--noise_std', default=0, type=float, help='Std of the noise added to the system')
 
     # other args
     parser.add_argument('--derivative', default=True, type=bool, help='If true, take the derivative of the prediction w.r.t coordinates')
@@ -156,6 +161,7 @@ def get_args():
 
 
     args = parser.parse_args()
+    if args.val_freq == 0: args.val_freq = -1
     os.makedirs(args.log_dir,exist_ok=True)
     save_argparse(args,os.path.join(args.log_dir,'input.yaml'),exclude='conf')
 
