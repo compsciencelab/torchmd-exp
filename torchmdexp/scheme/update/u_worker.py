@@ -220,22 +220,7 @@ class Updater(Worker):
                             if grads is not None:
                                 grads_to_average.append(grads)                                
                             train_losses.append(loss)
-                            
-                            # Save buffer
-                            if len(values_dict['native_coords']) > 0:
-                                lst_len = len(values_dict['native_coords'])
-                                if lst_len > 1:
-                                    self.buffers[s]['native_coords'] = list(itemgetter(*torch.multinomial(torch.ones(lst_len), num_samples=2))(values_dict['native_coords']))
-                                else:
-                                    self.buffers[s]['native_coords'] = [values_dict['native_coords'][0]]
-
-                            if len(values_dict['free_coords']) > 0:
-                                lst_len = len(values_dict['free_coords'])
-                                if lst_len > 1:
-                                    self.buffers[s]['free_coords'] = list(itemgetter(*torch.multinomial(torch.ones(lst_len), num_samples=2))(values_dict['free_coords']))
-                                else:
-                                    self.buffers[s]['native_coords'] = [values_dict['free_coords'][0]]
-                            
+                                                        
                         if val == True:
                             _ , loss, values_dict = self.local_we_worker.compute_gradients(**system_result, val=val)
                             val_losses.append(loss)
@@ -255,7 +240,6 @@ class Updater(Worker):
                     else:
                         losses_dict['val_avg_metric'].append(values_dict['val_avg_metric'])
 
-                    
                     torch.cuda.empty_cache()
                     
                 # Optim step

@@ -5,7 +5,7 @@ from torchmdexp.datasets.proteins import ProteinDataset
 from torchmdexp.samplers.torchmd.torchmd_sampler import TorchMD_Sampler
 from torchmdexp.samplers.utils import moleculekit_system_factory
 from torchmdexp.scheme.scheme import Scheme
-from torchmdexp.weighted_ensembles.weighted_ensemble import WeightedEnsemble
+from torchmdexp.contrastive_divergence.contrastive_divergence import CD
 from torchmdexp.learner import Learner
 from torchmdexp.metrics.losses import Losses
 from torchmd.utils import LoadFromFile
@@ -19,9 +19,11 @@ from torchmdexp.utils.utils import save_argparse
 from torchmdexp.utils.parsing import get_args
 import ray
 import numpy as np
-import os
 import random
+import os
 import copy
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+import time
 
 def main():
     args = get_args()
@@ -45,6 +47,7 @@ def main():
     # Define NNP
     nnp = NNP(args)        
     optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
+    scheduler = ReduceLROnPlateau(optim, 'min', factor=0.9, patience=100, threshold=0.01, min_lr=1e-4)
     
     # Save num_params
     input_file = open(os.path.join(args.log_dir, 'input.yaml'), 'a')
@@ -59,10 +62,9 @@ def main():
     train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
     #dataset_names = protein_factory.get_names()
     dataset_names = []
-    
+
     train_set_size = len(train_set)
     val_set_size = len(val_set)
-    
         
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
@@ -74,15 +76,10 @@ def main():
                                                             )
     
     
-    # 2. Define the Weighted Ensemble that computes the ensemble of states    
+    # 2. Define the Weighted Ensemble that computes the ensemble of states   
     loss = Losses(0.0, fn_name=args.loss_fn, margin=args.margin, y=1.0)
-    weighted_ensemble_factory = WeightedEnsemble.create_factory(optimizer = optim, nstates = nstates, lr=lr, 
-                                                                metric = rmsd, loss_fn=loss,
-                                                                val_fn=rmsd,
-                                                                max_grad_norm = args.max_grad_norm, T = args.temperature, 
-                                                                replicas = args.replicas, precision = torch.double, 
-                                                                energy_weight = args.energy_weight
-                                                               )
+    
+    contrastive_divergence_factory = CD.create_factory(optimizer = optim, nstates = nstates, lr=lr, precision = torch.double)
 
 
     # 3. Define Scheme
@@ -93,7 +90,7 @@ def main():
                    'systems_factory': moleculekit_system_factory,
                    'nnp': nnp,
                    'device': args.device,
-                   'weighted_ensemble_factory': weighted_ensemble_factory,
+                   'weighted_ensemble_factory': contrastive_divergence_factory,
                    'loss_fn': loss
     })
 
@@ -114,6 +111,7 @@ def main():
                    'batch_size': batch_size
     })
 
+
     scheme = Scheme(**params)
 
 
@@ -121,13 +119,12 @@ def main():
     learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir,
                       keys = args.keys)    
 
-    import time
     # 5. Define epoch and Levels
     epoch = 0        
     max_loss = args.max_loss
     stop = False
     
-    for i in range(3000):
+    while stop == False:
         epoch += 1
         train_set.shuffle()
                 
@@ -145,7 +142,7 @@ def main():
                         
             end = time.perf_counter()
             batch_avg_metric = learner.get_batch_avg_metric()
-            #scheduler.step(batch_avg_metric)
+            scheduler.step(batch_avg_metric)
             print(f'Train Batch {i//batch_size}, Time per batch: {end - start:.2f} , RMSD loss {batch_avg_metric:.2f}') 
             
             #buffers = learner.get_buffers()
@@ -158,6 +155,7 @@ def main():
                     batch = val_set[ i : batch_size + i]
                     learner.set_batch(batch)
                     learner.step(val=True)
+        
         
         learner.compute_epoch_stats()
         learner.write_row()
@@ -180,6 +178,7 @@ def main():
             if loss < max_loss:
                 max_loss = loss
                 learner.save_model()
+            
 
 if __name__ == "__main__":
     

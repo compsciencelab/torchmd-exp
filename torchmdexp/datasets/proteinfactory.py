@@ -1,5 +1,5 @@
 from .proteins import ProteinDataset
-from .utils import pdb2psf_CA
+from .utils import pdb2psf_CA, pdb2psf_CACB
 import os
 import numpy as np
 import re
@@ -53,64 +53,40 @@ class ProteinFactory:
             self.dataset.shuffle()
     
     
-    def create_dataset(self, dataset, data_dir, out_dir = '', topology = ('bonds', 'angles', 'dihedrals'), x = None, y = None):
+    def create_dataset(self, dataset, data_dir, out_dir = '', topology = ('bonds', 'angles', 'dihedrals'), x = None, y = None, mapping='CA'):
         
         topo_dict = dict((x, True) for x in topology)
         pdb_ids = [l.rstrip() for l in open(dataset)]
         
         dataset = {'names' : [],
                    'molecules': [],
-                   'ground_truths': [],
+                   'crystal': [],
+                   'native_ensemble': [],
+                   'free_ensemble': [],
                    'lengths': [],
-                   'x': [],
-                   'y': []}
+                  }
         
         length = len(pdb_ids)
         for idx, protein in tqdm(enumerate(pdb_ids), total=length):
             
-            ground_truth = os.path.join(data_dir, 'ground_truths' , protein + '.pdb')
-
-            init_state = os.path.join(data_dir, 'molecules' , protein + '.xtc')
-            coords = os.path.join(data_dir, 'x' , protein + '.npy')
-            delta = os.path.join(data_dir, 'y' , protein + '.npy')
+            x_0 = os.path.join(data_dir, 'x_0' , protein + '.pdb')
                  
-            if os.path.isfile(ground_truth):
-                mol = Molecule(ground_truth)    
+            if os.path.isfile(x_0):
+                mol = Molecule(x_0)    
                 native_mol = copy.deepcopy(mol) 
-                native_coords = get_native_coords(native_mol)
-                
-            if os.path.isfile(init_state):
-                mol = Molecule(init_state)
-                
-            if topo_dict:
-                mol = pdb2psf_CA(mol, **topo_dict)  
-            
-            if os.path.isfile(coords) and os.path.isfile(delta):
-                x, y = np.load(coords), np.load(delta)
-                
-                # Positions to torch tensor
-                pos = torch.zeros(x.shape)
-                pos[:] = torch.tensor(
-                          x, dtype=pos.dtype,
-                      )
-                x = pos.type(torch.float64)
-                
-                
-                # Forces to torch tensor
-                y = torch.tensor(
-                    y, dtype=pos.dtype,
-                ).type(torch.float64)
-                
-                if y.shape[-1] == 3:
-                    y = y.squeeze()
-                
-            
+                x_0_coords = get_native_coords(mol)
+                                
+                if topo_dict:
+                    if mapping == 'CA':
+                        mol = pdb2psf_CA(mol, **topo_dict)  
+                    elif mapping == 'CACB':
+                        mol = pdb2psf_CACB(mol, **topo_dict)                  
             
             dataset['names'].append(protein)
             dataset['molecules'].append(mol)
-            dataset['ground_truths'].append(native_coords)
+            dataset['crystal'].append(x_0_coords)
+            dataset['native_ensemble'].append(x_0_coords.unsqueeze(0))
+            dataset['free_ensemble'].append(None)
             dataset['lengths'].append(len(mol.coords))
-            dataset['x'].append(x)
-            dataset['y'].append(y)
             
         np.save(out_dir ,dataset)

@@ -53,9 +53,9 @@ class WorkerSet:
             
             if worker.__name__ == "SimWorker" and num_workers == 1:
                 self.num_workers = 0
-                local_params.update(
-                    {'system': self.worker_systems[0],
-                     'worker_info': self.workers_info[0]})
+                #local_params.update(
+                #    {'system': self.worker_systems[0],
+                #     'worker_info': self.workers_info[0]})
                         
             elif worker.__name__ == "WeightedEnsembleWorker" and num_workers == 1:
                 self.num_workers = 0
