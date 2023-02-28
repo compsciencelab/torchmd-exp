@@ -220,6 +220,8 @@ class WeightedEnsemble:
 
             if loss != 0.0:
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.nnp.parameters(), 0.7)
+                
                 grads = []
                 for p in self.nnp.parameters():
                     if grads_to_cpu:

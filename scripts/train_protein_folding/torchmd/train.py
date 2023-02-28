@@ -126,7 +126,7 @@ def main():
     max_loss = args.max_loss
     stop = False
     
-    while stop == False:
+    for i in range(3000):
         epoch += 1
         train_set.shuffle()
                 
