@@ -10,7 +10,6 @@ This repository contains the associated code, data and tutorials for reproducing
 ```
 git clone https://github.com/compsciencelab/torchmd-exp.git
 git clone https://github.com/torchmd/torchmd.git
-
 ````
 
 - Create and install a new Conda enviroment
