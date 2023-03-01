@@ -12,3 +12,5 @@ scripts/utils/test_sim.ipynb
 build/
 scripts/utils/
 dist/
+Tutorials/csm_50
+Tutorials/fastfolders

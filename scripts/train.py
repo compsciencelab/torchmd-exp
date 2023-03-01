@@ -15,13 +15,10 @@ from torchmdexp.nnp import models
 from torchmdexp.nnp.models import output_modules
 from torchmdexp.nnp.models.utils import rbf_class_mapping, act_class_mapping
 from torchmdexp.nnp.module import NNP
-from torchmdexp.utils.utils import save_argparse
 from torchmdexp.utils.parsing import get_args
 import ray
-import numpy as np
 import os
-import random
-import copy
+import time
 
 def main():
     args = get_args()
@@ -121,7 +118,7 @@ def main():
     learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir,
                       keys = args.keys)    
 
-    import time
+    
     # 5. Define epoch and Levels
     epoch = 0        
     max_loss = args.max_loss
@@ -133,23 +130,18 @@ def main():
                 
         # TRAIN STEP
         for i in range(0, train_set_size, batch_size):
-
             start = time.perf_counter()
             batch = train_set[ i : batch_size + i]
             
             # Set the initial conformations of the batch   
-            start = time.perf_counter()
             learner.set_batch(batch, sample='native_ensemble')
             
             learner.step()
-                        
             end = time.perf_counter()
+            
             batch_avg_metric = learner.get_batch_avg_metric()
-            #scheduler.step(batch_avg_metric)
             print(f'Train Batch {i//batch_size}, Time per batch: {end - start:.2f} , RMSD loss {batch_avg_metric:.2f}') 
             
-            #buffers = learner.get_buffers()
-            #train_set.add_buffer_conf(buffers)
             
         # VAL STEP
         if len(val_set) > 0:
@@ -163,18 +155,12 @@ def main():
         learner.write_row()
         
         loss = learner.get_train_loss()
-        avg_metric = learner.get_avg_metric()
-                  
-        if len(val_set) > 0:
-            val_avg_metric = learner.get_avg_metric(val=True)
-        else:
-            val_avg_metric = None
+        val_loss = learner.get_val_loss() if len(val_set) > 0 else None            
             
-        print(f'EPOCH {epoch}. Train RMSD loss {avg_metric}. Val RMSD loss {val_avg_metric}')
-        
-        if avg_metric is not None:
-            if avg_metric < max_loss:
-                max_loss = avg_metric
+        print(f'EPOCH {epoch}. Train loss {loss}. Val loss {val_loss}')
+        if val_loss is not None:
+            if val_loss < max_loss:
+                max_loss = val_loss
                 learner.save_model()
         else:
             if loss < max_loss:

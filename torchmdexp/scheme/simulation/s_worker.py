@@ -26,9 +26,9 @@ class SimWorker(Worker):
         self.print_worker_info()
         
             
-    def simulate(self, steps, output_period, use_network):
+    def simulate(self, steps, output_period):
                 
-        return self.simulator.simulate(steps, output_period, use_network)
+        return self.simulator.simulate(steps, output_period)
     
     def set_init_state(self, init_state):
         

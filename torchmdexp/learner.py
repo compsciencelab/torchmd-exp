@@ -1,6 +1,6 @@
 from torchmdexp.utils.logger import LogWriter
+import torch
 from statistics import mean
-import logging
 
 class Learner:
     """
@@ -20,7 +20,6 @@ class Learner:
         self.log_dir = log_dir
         self.update_worker = scheme.update_worker()
         self.keys = keys
-        self.logger = logging.getLogger(__name__)
         
         # Counters and metrics
         self.steps = steps
@@ -33,7 +32,6 @@ class Learner:
         self.train_avg_metrics = []
         self.val_losses = []
         self.val_avg_metrics = []
-
         
 
         # Losses of the epoch
@@ -51,25 +49,15 @@ class Learner:
         self.results_dict = {key: 0 for key in keys}
         
         keys = tuple([key for key in self.results_dict.keys()])
-
         self.logger = LogWriter(self.log_dir,keys=keys)
         self.step_logger = LogWriter(self.log_dir, keys=keys, monitor='step_monitor.csv')
         
     def step(self, val=False, mode='val'):
         """ Takes an optimization update step """
         
-        self.logger.debug(f'Starting batch step. Epoch {self.epoch+1}')
-        if val:
-            self.logger.debug(f'Performing {mode} step.')
-        else:
-            self.logger.debug(f'Performing train step.')
-        self.logger.debug(f"{'Not u' if not use_network else 'U'}sing network for sampling.")
-        
         # Update step
-        info = self.update_worker.step(self.steps, self.output_period, val, use_network)
+        info = self.update_worker.step(self.steps, self.output_period, val)
         
-        self.logger.debug(f'Finished batch step. Adding results to dictionaries.')
-
         if val == True:
             self.val_losses.append(info['val_loss'])
             self.val_avg_metrics.append(info['val_avg_metric'])
@@ -79,10 +67,11 @@ class Learner:
             
         self.step_logger.write_row(info)
 
+
     def level_up(self):
         """ Increases level of difficulty """
         
-        self.logger.debug(f'Leveling up')
+        #self.update_worker.set_init_state(next_level)
         self.level += 1
     
     def set_init_state(self, init_state):
@@ -105,8 +94,6 @@ class Learner:
         self.output_period = output_period
     
     def save_model(self):
-        
-        self.logger.debug(f'Saving model at epoch {self.epoch}')
         
         if self.val_loss is not None:
             path = f'{self.log_dir}/epoch={self.epoch}-train_loss={self.train_loss:.4f}-val_loss={self.val_loss:.4f}.ckpt'
@@ -144,7 +131,7 @@ class Learner:
                 self.results_dict['val_avg_metric'] = self.val_avg_metric
             else:
                 self.results_dict['val_loss'] = None
-
+                
         # Reset everything
         self.train_losses = []
         self.train_avg_metrics = []
@@ -152,8 +139,8 @@ class Learner:
         self.val_avg_metrics = []
         
     def write_row(self):
-        if self.monitor:
-            self.monitor.write_row(self.results_dict)
+        if self.logger:
+            self.logger.write_row(self.results_dict)
 
     def get_val_loss(self):
         return self.val_loss
