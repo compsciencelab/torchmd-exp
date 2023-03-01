@@ -35,4 +35,6 @@ This repository contains:
 - Instructions to download datasets and trained models
 - Tutorials for using the code and resources
 
+## License
+MIT
 
