@@ -237,7 +237,7 @@ class WeightedEnsemble:
                 
         elif val == True:
             grads = None
-            loss, values_dict = self.compute_loss(crystal, native_ensemble, states, embeddings)
+            loss, values_dict = self.compute_loss(crystal, states, embeddings)
             loss = loss.detach()
             values_dict['val_avg_metric'] = values_dict['avg_metric']
 

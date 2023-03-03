@@ -121,3 +121,6 @@ class ProteinDataset(Dataset):
                         self.dataset['free_ensemble'][idx] = torch.cat((self.dataset['free_ensemble'][idx], buffer[s]['free_coords'][rdm_idx].unsqueeze(0)))
                     else:
                         self.dataset['free_ensemble'][idx] = buffer[s]['free_coords'][rdm_idx].unsqueeze(0)
+                        
+    def save(self, log_dir):
+        np.save(log_dir, self.dataset)

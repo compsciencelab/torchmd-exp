@@ -28,7 +28,7 @@ class ProteinFactory:
         self.dataset.shuffle()
         self.dataset = self.dataset[:size]
             
-    def train_val_split(self, val_size=0.0):
+    def train_val_split(self, val_size=0.0, log_dir=""):
         
         if not 0.0 <= val_size <= 1:
             raise ValueError("Validation set proportion must be between 0 and 1")
@@ -40,6 +40,10 @@ class ProteinFactory:
         
         self.train_set, self.val_set = self.dataset[:self.train_set_size], self.dataset[self.train_set_size:]
         
+        
+        self.train_set.save(os.path.join(log_dir, 'train_set.npy'))
+        self.val_set.save(os.path.join(log_dir, 'val_set.npy'))
+                
         return self.train_set, self.val_set
     
     def get_names(self):

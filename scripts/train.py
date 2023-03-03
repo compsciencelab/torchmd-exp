@@ -53,7 +53,7 @@ def main():
     protein_factory.load_dataset(args.dataset)
     #protein_factory.set_dataset_size(100)
 
-    train_set, val_set = protein_factory.train_val_split(val_size=args.val_size)
+    train_set, val_set = protein_factory.train_val_split(val_size=args.val_size, log_dir=args.log_dir)
     #dataset_names = protein_factory.get_names()
     dataset_names = []
     
@@ -124,7 +124,7 @@ def main():
     max_loss = args.max_loss
     stop = False
     
-    for i in range(3000):
+    while stop == False:
         epoch += 1
         train_set.shuffle()
                 
