@@ -23,7 +23,6 @@ import time
 def main():
     args = get_args()
     torch.manual_seed(args.seed)
-    
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -59,7 +58,7 @@ def main():
     
     train_set_size = len(train_set)
     val_set_size = len(val_set)
-    
+    print(train_set_size + val_set_size)
         
     # 1. Define the Sampler which performs the simulation and returns the states and energies
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
