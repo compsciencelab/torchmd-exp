@@ -206,7 +206,7 @@ class Updater(Worker):
                 
                 grads_to_average = []
                 # Mini-batch update
-                for idx, s in enumerate(batch_names):
+                for idx, s in enumerate(batch_names):                    
                     system_result = {key:sim_dict[key][idx] if sim_dict[key] else None for key in sim_dict.keys()}
                     self.buffers[s] = {'native_coords': [],
                                        'free_coords': []
