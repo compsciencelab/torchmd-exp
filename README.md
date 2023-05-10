@@ -1,5 +1,5 @@
-# Unsupervised Learning of Coarse-Grained Protein Force-fields 
-This repository contains the associated code, data and tutorials for reproducing the paper "Unsupervised Learning of Coarse-Grained Protein Force-fields".
+# Top-down learning of coarse-grained protein force-fields with Graph Neural Networks 
+This repository contains the associated code, data and tutorials for reproducing the paper "Top-down learning of coarse-grained protein force-fields with Graph Neural Networks".
 
 ## Installation
 
