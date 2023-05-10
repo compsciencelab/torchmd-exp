@@ -245,7 +245,6 @@ class TorchMD_Sampler(Sampler):
             
         states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
         sample_dict = self._split_states(states, sample_dict)          
-
         self.sim_dict.update(sample_dict)
         return self.sim_dict
 
@@ -285,6 +284,9 @@ class TorchMD_Sampler(Sampler):
         self.sim_dict['names'] = self.names
         self.sim_dict['native_ensemble'] = batch.get('native_ensemble')
         self.sim_dict['crystal'] = batch.get('crystal')
+    
+    def set_timestep(self, timestep):
+        self.timestep = timestep
                 
     def _set_integrator(self, mols, lengths):
         

@@ -49,6 +49,9 @@ class SimWorker(Worker):
     def set_batch(self, batch, sample):
         self.simulator.set_batch(batch, sample)
         
+    def set_timestep(self,timestep):
+        self.simulator.set_timestep(timestep)
+        
     def get_nnp(self):
         return self.nnp
             

@@ -74,6 +74,14 @@ class UWorker(Worker):
             for idx, e in enumerate(self.updater.remote_workers):
                 remote_batch = batch[batch_size * idx : batch_size  * (idx + 1)]
                 e.set_batch.remote(remote_batch, sample)
+    
+    def set_timestep(self, timestep):
+        if self.sim_execution == "centralised" and self.reweighting_execution == "centralised":
+            self.updater.local_worker.set_timestep(timestep)
+            
+        elif self.sim_execution == "parallelised" and self.reweighting_execution == "centralised":
+            for idx, e in enumerate(self.updater.remote_workers):
+                e.set_timestep.remote(timestep)
 
     def get_val_rmsd(self):
         return self.val_rmsd

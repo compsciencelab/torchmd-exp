@@ -40,7 +40,7 @@ def main():
     
     # Define NNP
     nnp = NNP(args)        
-    optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr)
+    optim = torch.optim.AdamW(nnp.model.parameters(), lr=args.lr)
     
     # Save num_params
     input_file = open(os.path.join(args.log_dir, 'input.yaml'), 'a')
@@ -50,7 +50,7 @@ def main():
     # Load training molecules
     protein_factory = ProteinFactory()
     protein_factory.load_dataset(args.dataset)
-    #protein_factory.set_dataset_size(100)
+    #protein_factory.set_dataset_size(1000)
 
     train_set, val_set = protein_factory.train_val_split(val_size=args.val_size, log_dir=args.log_dir)
     #dataset_names = protein_factory.get_names()
@@ -76,7 +76,7 @@ def main():
                                                                 metric = rmsd, loss_fn=loss,
                                                                 val_fn=rmsd,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
-                                                                replicas = args.replicas, precision = torch.double, 
+                                                                replicas = args.replicas, precision = torch.float, 
                                                                 energy_weight = args.energy_weight
                                                                )
 
@@ -106,7 +106,7 @@ def main():
     })
 
     # Update specs
-    params.update({'local_device': args.device, 
+    params.update({'local_device': 'cuda:3', 
                    'batch_size': batch_size
     })
 
@@ -114,7 +114,7 @@ def main():
 
 
     # 4. Define Learner
-    learner = Learner(scheme, steps, output_period, train_names=dataset_names, log_dir=args.log_dir,
+    learner = Learner(scheme, steps, output_period, args.timestep, train_names=dataset_names, log_dir=args.log_dir,
                       keys = args.keys)    
 
     
@@ -122,7 +122,7 @@ def main():
     epoch = 0        
     max_loss = args.max_loss
     stop = False
-    
+    j = 0
     while stop == False:
         epoch += 1
         train_set.shuffle()
@@ -141,7 +141,6 @@ def main():
             batch_avg_metric = learner.get_batch_avg_metric()
             print(f'Train Batch {i//batch_size}, Time per batch: {end - start:.2f} , RMSD loss {batch_avg_metric:.2f}') 
             
-            
         # VAL STEP
         if len(val_set) > 0:
             if (epoch == 1 or (epoch % args.val_freq) == 0):
@@ -157,14 +156,20 @@ def main():
         val_loss = learner.get_val_loss() if len(val_set) > 0 else None            
             
         print(f'EPOCH {epoch}. Train loss {loss}. Val loss {val_loss}')
-        if val_loss is not None:
-            if val_loss < max_loss:
-                max_loss = val_loss
-                learner.save_model()
-        else:
-            if loss < max_loss:
-                max_loss = loss
-                learner.save_model()
+        #if val_loss is not None:
+        #    if val_loss < max_loss:
+        #        max_loss = val_loss
+        #        learner.save_model()
+        #else:
+        #    if loss < max_loss:
+        #        max_loss = loss
+        #        learner.save_model()
+        
+        # Save always
+        learner.save_model()
+        
+        # Increase steps and timestep progressively
+        # Rewrite lines 173 to 183
 
 if __name__ == "__main__":
     

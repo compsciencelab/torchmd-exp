@@ -16,7 +16,7 @@ class Learner:
         Directory for model checkpoints and the monitor.csv
     """
     
-    def __init__(self, scheme, steps, output_period, train_names = [] , log_dir=None, keys=('epoch', 'train_loss', 'val_loss')):
+    def __init__(self, scheme, steps, output_period, timestep, train_names = [] , log_dir=None, keys=('epoch', 'train_loss', 'val_loss')):
         self.log_dir = log_dir
         self.update_worker = scheme.update_worker()
         self.keys = keys
@@ -44,6 +44,7 @@ class Learner:
         self.level = 0
         self.epoch = 0
         self.lr = None
+        self.timestep = timestep
         
         # Prepare results dict
         self.results_dict = {key: 0 for key in keys}
@@ -64,7 +65,10 @@ class Learner:
         else:
             self.train_losses.append(info['train_loss'])
             self.train_avg_metrics.append(info['train_avg_metric'])
-            
+        
+        info['lr'] = self.update_worker.updater.local_we_worker.weighted_ensemble.optimizer.param_groups[0]['lr']
+        info['timestep'] = self.timestep
+        info['steps'] = self.steps
         self.step_logger.write_row(info)
 
 
@@ -93,6 +97,10 @@ class Learner:
         """ Change output_period """
         self.output_period = output_period
     
+    def set_timestep(self, timestep):
+        self.timestep = timestep
+        return self.update_worker.set_timestep(timestep)
+    
     def save_model(self):
         
         if self.val_loss is not None:
@@ -112,6 +120,7 @@ class Learner:
         self.results_dict['train_avg_metric'] = self.train_avg_metric
         
         self.results_dict['lr'] = self.update_worker.updater.local_we_worker.weighted_ensemble.optimizer.param_groups[0]['lr']
+        self.results_dict['timestep'] = self.timestep
         
         # Update epoch
         self.epoch += 1
