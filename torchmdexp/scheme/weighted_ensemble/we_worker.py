@@ -17,7 +17,6 @@ class WeightedEnsembleWorker(Worker):
         
         # Computation device
         dev = device or "cuda" if torch.cuda.is_available() else "cpu"
-        
         # HERE PUT NNP AND THEN THIS WILL BE USED TO GET WEIGHTS
         
         # Create Propagator instance
@@ -28,7 +27,6 @@ class WeightedEnsembleWorker(Worker):
         self.print_worker_info()
                 
     def compute_gradients(self, **sim_results):
-                
         return self.weighted_ensemble.compute_gradients(**sim_results)
     
     def get_loss(self):

@@ -1,21 +1,15 @@
-name: torchmd-exp
+name: torchmd-exp2
 channels:
   - conda-forge
   - acellera
-  - raimis
 dependencies:
   - rdflib
   - yacs
   - h5py
   - matplotlib
   - pip
-  - python==3.9
-  - pytorch==1.10.0
   - moleculekit
-  - raimis::pytorch-geometric==2.0.2
   - tqdm
   # Dev tools
   - flake8
   - pytest
-
-

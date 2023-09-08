@@ -62,7 +62,7 @@ class WorkerSet:
             
             elif worker.__name__ == "SimWorker" and num_workers > 1:
                 raise ValueError("You cannot add local worker with more than 1 SimWorker")
-                
+            
             self._local_worker = self._make_worker(
                 self.worker_class, index_worker = 0,
                 worker_params = local_params)
@@ -89,6 +89,7 @@ class WorkerSet:
         w : python class
             An instance of worker class cls
         """
+        
         w = cls(index_worker=index_worker, **worker_params)
         return w
     

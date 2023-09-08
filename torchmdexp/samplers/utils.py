@@ -35,7 +35,7 @@ def get_native_coords(mol, device='cpu'):
     pos[:] = torch.tensor(
             atom_pos, dtype=pos.dtype, device=pos.device
     )
-    pos = pos.type(torch.float64)
+    pos = pos.type(torch.float32)
     
     pos.to(device)
     
@@ -59,7 +59,7 @@ def moleculekit_system_factory(num_workers):
         
     return systems, worker_info
 
-def create_system(molecules, dist = 1000):
+def create_system(molecules, dist = 200):
     """
     Return a system with multiple molecules separated by a given distance. 
     
@@ -99,7 +99,7 @@ def create_system(molecules, dist = 1000):
 
             ml = len(batch.coords)
             batch.append(mol) # join molecules
-            batch.box = np.array([[0],[0],[0]], dtype = np.float32)
+            batch.box = np.array([[0],[0],[0]], dtype = np.float64)
             batch.dihedrals = np.append(batch.dihedrals, mol.dihedrals + ml, axis=0)
 
     return batch

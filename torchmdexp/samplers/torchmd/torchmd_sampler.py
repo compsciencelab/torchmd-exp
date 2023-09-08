@@ -118,7 +118,6 @@ class TorchMD_Sampler(Sampler):
 
         self.log_dir = log_dir
         
-        
     @classmethod
     def create_factory(cls,
                        forcefield, 
@@ -240,8 +239,9 @@ class TorchMD_Sampler(Sampler):
         
         # Run the simulation
         for i in iterator:
-            states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
             Ekin, Epot, T = integrator.step(niter=output_period)
+            states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
+            
             
         states[(i-1)*self.replicas:i*self.replicas] = integrator.systems.pos.to("cpu")[:]
         sample_dict = self._split_states(states, sample_dict)          

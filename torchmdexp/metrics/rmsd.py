@@ -1,3 +1,4 @@
+from os import error
 import torch 
 import numpy as np
 
@@ -10,25 +11,32 @@ def rmsd(c1, c2, *args):
     # set device
     c1 = c1.to(device)
     c2 = c2.to(device)
-    
+
     # remove size 1 dimensions
     pos1 = torch.squeeze(c1)
     pos2 = torch.squeeze(c2)
-    
+
     r1 = pos1.transpose(0, 1)
     r2 = pos2.transpose(0, 1)
+
     P = r1 - r1.mean(1).view(3, 1)
     Q = r2 - r2.mean(1).view(3, 1)
-    cov = torch.matmul(P, Q.transpose(0, 1))
-    
-    try:
-        U, S, V = torch.svd(cov)
-    except:                     # torch.svd may have convergence issues for GPU and CPU.
-        U, S, V = torch.svd(cov + 1e-4*cov.mean()*torch.rand(cov.shape, device=cov.device))
 
-    #U, S, Vh = torch.linalg.svd(cov)
-    #V = Vh.transpose(-2, -1).conj()
-    
+    try:
+        cov = torch.matmul(P, Q.transpose(0, 1))
+    except Exception as e:
+        print("Exception occurred while calculating covariance: ", str(e))
+
+    try:
+        #U, S, V = torch.svd(cov)
+        U, S, V = torch.svd(cov)
+    except Exception as e:   
+        try: 
+            #U, S, V = torch.svd(cov + 1e-4*cov.mean()*torch.rand(cov.shape, device=cov.device))
+            U, S, V = torch.svd(cov + 1e-4*cov.mean()*torch.rand(cov.shape, device=cov.device))
+        except Exception as e:   
+            print("Exception occurred while calculating SVD: ", str(e))
+
     d = torch.tensor([
             [1.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
