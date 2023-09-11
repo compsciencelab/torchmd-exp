@@ -1,4 +1,5 @@
 import argparse
+from sched import scheduler
 import torch
 from torchmdexp.datasets.proteinfactory import ProteinFactory
 from torchmdexp.datasets.proteins import ProteinDataset
@@ -37,11 +38,26 @@ def main():
     batch_size = args.batch_size
     lr = args.lr
     num_sim_workers = args.num_sim_workers
-    
+    optimizer = args.optimizer
+
     # Define NNP
     nnp = NNP(args)        
-    optim = torch.optim.AdamW(nnp.model.parameters(), lr=args.lr)
-    
+    #optim = torch.optim.AdamW(nnp.model.parameters(), lr=args.lr)
+    if optimizer == 'radam':
+        optim = torch.optim.RAdam(nnp.model.parameters(), lr=args.lr)
+    elif optimizer == 'sgd':
+        optim = torch.optim.SGD(nnp.model.parameters(), lr=args.lr)
+    elif optimizer == 'adam':
+        optim = torch.optim.Adam(nnp.model.parameters(), lr=args.lr, betas=(args.beta1, args.beta2), weight_decay=0.1)
+    elif optimizer == 'adamw':
+        optim = torch.optim.AdamW(nnp.model.parameters(), lr=args.lr, betas=(args.beta1, args.beta2), weight_decay=0.1) 
+
+    if args.lr_decay < 1.0:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, factor=args.lr_decay, min_lr=args.min_lr, patience=0)
+        scheduler.step(1)
+    else:
+        scheduler = None
+
     # Save num_params
     input_file = open(os.path.join(args.log_dir, 'input.yaml'), 'a')
     input_file.write(f'num_parameters: {sum(p.numel() for p in nnp.model.parameters())}')
@@ -49,13 +65,12 @@ def main():
 
     # Load training molecules
     protein_factory = ProteinFactory()
+    print(args.dataset)
     protein_factory.load_dataset(args.dataset)
-    #protein_factory.set_dataset_size(1000)
 
-    train_set, val_set = protein_factory.train_val_split(val_size=args.val_size, log_dir=args.log_dir)
-    #dataset_names = protein_factory.get_names()
+    train_set, val_set = protein_factory.train_val_split(val_size=args.val_size, log_dir=args.log_dir, load_model=args.load_model)
     dataset_names = []
-    
+
     train_set_size = len(train_set)
     val_set_size = len(val_set)
     print(train_set_size + val_set_size)
@@ -64,7 +79,7 @@ def main():
     torchmd_sampler_factory = TorchMD_Sampler.create_factory(forcefield= args.forcefield, forceterms = args.forceterms,
                                                              replicas=args.replicas, cutoff=args.cutoff, rfa=args.rfa,
                                                              switch_dist=args.switch_dist, 
-                                                             exclusions=args.exclusions, timestep=args.timestep,precision=torch.double, 
+                                                             exclusions=args.exclusions, timestep=args.timestep,precision=torch.float32, 
                                                              temperature=args.temperature, langevin_temperature=args.langevin_temperature,
                                                              langevin_gamma=args.langevin_gamma
                                                             )
@@ -76,7 +91,7 @@ def main():
                                                                 metric = rmsd, loss_fn=loss,
                                                                 val_fn=rmsd,
                                                                 max_grad_norm = args.max_grad_norm, T = args.temperature, 
-                                                                replicas = args.replicas, precision = torch.float, 
+                                                                replicas = args.replicas, precision = torch.float32, 
                                                                 energy_weight = args.energy_weight
                                                                )
 
@@ -106,7 +121,7 @@ def main():
     })
 
     # Update specs
-    params.update({'local_device': 'cuda:3', 
+    params.update({'local_device': args.device, 
                    'batch_size': batch_size
     })
 
@@ -114,8 +129,8 @@ def main():
 
 
     # 4. Define Learner
-    learner = Learner(scheme, steps, output_period, args.timestep, train_names=dataset_names, log_dir=args.log_dir,
-                      keys = args.keys)    
+    learner = Learner(scheme, steps, output_period, args.timestep, scheduler=None, train_names=dataset_names, log_dir=args.log_dir,
+                      keys = args.keys, load_model=args.load_model)    
 
     
     # 5. Define epoch and Levels
@@ -136,6 +151,7 @@ def main():
             learner.set_batch(batch, sample='native_ensemble')
             
             learner.step()
+            
             end = time.perf_counter()
             
             batch_avg_metric = learner.get_batch_avg_metric()
@@ -153,24 +169,15 @@ def main():
         learner.write_row()
         
         loss = learner.get_train_loss()
-        val_loss = learner.get_val_loss() if len(val_set) > 0 else None            
-            
+        val_loss = learner.get_val_loss() if len(val_set) > 0 else None   
+        if (epoch % 10) == 0:         
+            scheduler.step(1)
+
         print(f'EPOCH {epoch}. Train loss {loss}. Val loss {val_loss}')
-        #if val_loss is not None:
-        #    if val_loss < max_loss:
-        #        max_loss = val_loss
-        #        learner.save_model()
-        #else:
-        #    if loss < max_loss:
-        #        max_loss = loss
-        #        learner.save_model()
         
         # Save always
         learner.save_model()
         
-        # Increase steps and timestep progressively
-        # Rewrite lines 173 to 183
-
 if __name__ == "__main__":
     
     main()

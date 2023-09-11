@@ -1,5 +1,6 @@
 from torchmdexp.utils.logger import LogWriter
-import torch
+import os
+import csv
 from statistics import mean
 
 class Learner:
@@ -16,7 +17,8 @@ class Learner:
         Directory for model checkpoints and the monitor.csv
     """
     
-    def __init__(self, scheme, steps, output_period, timestep, train_names = [] , log_dir=None, keys=('epoch', 'train_loss', 'val_loss')):
+    def __init__(self, scheme, steps, output_period, timestep, scheduler=None, train_names = [] , log_dir=None, keys=('epoch', 'train_loss', 'val_loss'), 
+                 load_model=None):
         self.log_dir = log_dir
         self.update_worker = scheme.update_worker()
         self.keys = keys
@@ -33,7 +35,6 @@ class Learner:
         self.val_losses = []
         self.val_avg_metrics = []
         
-
         # Losses of the epoch
         self.train_loss = None
         self.val_loss = None
@@ -42,16 +43,30 @@ class Learner:
         
         # Level, epoch and LR
         self.level = 0
-        self.epoch = 0
+        if load_model is not None:
+            with open(os.path.join(self.log_dir, 'monitor.csv'), 'r') as file:
+                reader = csv.reader(file)
+                last_row = None
+                for row in reader:
+                    last_row = row
+            try:
+                self.epoch = int(last_row[0])
+            except:
+                self.epoch = 0
+        else:
+            self.epoch = 0
+
+        self.update_step = 0
         self.lr = None
+        self.scheduler = scheduler
         self.timestep = timestep
         
         # Prepare results dict
         self.results_dict = {key: 0 for key in keys}
         
         keys = tuple([key for key in self.results_dict.keys()])
-        self.logger = LogWriter(self.log_dir,keys=keys)
-        self.step_logger = LogWriter(self.log_dir, keys=keys, monitor='step_monitor.csv')
+        self.logger = LogWriter(self.log_dir,keys=keys, load_model=load_model)
+        self.step_logger = LogWriter(self.log_dir, keys=keys, monitor='step_monitor.csv', load_model=load_model)
         
     def step(self, val=False, mode='val'):
         """ Takes an optimization update step """
@@ -65,12 +80,12 @@ class Learner:
         else:
             self.train_losses.append(info['train_loss'])
             self.train_avg_metrics.append(info['train_avg_metric'])
-        
+            lr = self.update_worker.updater.local_we_worker.weighted_ensemble.optimizer.param_groups[0]['lr']            
+
         info['lr'] = self.update_worker.updater.local_we_worker.weighted_ensemble.optimizer.param_groups[0]['lr']
         info['timestep'] = self.timestep
         info['steps'] = self.steps
         self.step_logger.write_row(info)
-
 
     def level_up(self):
         """ Increases level of difficulty """

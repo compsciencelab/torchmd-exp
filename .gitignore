@@ -17,3 +17,6 @@ Tutorials/fastfolders
 data/test/starting_points/.cln_kcenters_64clusters_coords.xtc
 data/test/starting_points/.cln_kcenters_64clusters_coords.xtc.numframes
 .*
+slurm_submit.sh
+submit_job.sh
+data/datasets/csm_50

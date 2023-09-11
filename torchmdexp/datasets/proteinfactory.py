@@ -28,21 +28,29 @@ class ProteinFactory:
         self.dataset.shuffle()
         self.dataset = self.dataset[:size]
             
-    def train_val_split(self, val_size=0.0, log_dir=""):
+    def train_val_split(self, val_size=0.0, log_dir="", load_model=None):
         
         if not 0.0 <= val_size <= 1:
             raise ValueError("Validation set proportion must be between 0 and 1")
         
-        self.train_set_size = int(len(self.dataset) * (1-val_size))
-        self.val_set_size = len(self.dataset) - self.train_set_size
+        # Paths to save or load datasets
+        train_set_path = os.path.join(log_dir, 'train_set.npy')
+        val_set_path = os.path.join(log_dir, 'val_set.npy')
+
+        # Check if train_set.npy and val_set.npy already exist
+        if os.path.exists(train_set_path) and os.path.exists(val_set_path) and load_model is not None:
+            self.train_set = ProteinDataset(train_set_path)
+            self.val_set = ProteinDataset(val_set_path)
         
-        self.dataset.shuffle()
-        
-        self.train_set, self.val_set = self.dataset[:self.train_set_size], self.dataset[self.train_set_size:]
-        
-        
-        self.train_set.save(os.path.join(log_dir, 'train_set.npy'))
-        self.val_set.save(os.path.join(log_dir, 'val_set.npy'))
+        else:
+            self.train_set_size = int(len(self.dataset) * (1-val_size))
+            self.val_set_size = len(self.dataset) - self.train_set_size
+            
+            self.dataset.shuffle()
+            
+            self.train_set, self.val_set = self.dataset[:self.train_set_size], self.dataset[self.train_set_size:]
+            self.train_set.save(os.path.join(log_dir, 'train_set.npy'))
+            self.val_set.save(os.path.join(log_dir, 'val_set.npy'))
                 
         return self.train_set, self.val_set
     

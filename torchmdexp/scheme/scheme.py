@@ -82,7 +82,6 @@ class Scheme:
                                                                       we_worker_resources=we_worker_resources)
         
         self._update_worker = UWorker(
-
             sim_workers_factory = sim_workers_factory,
             we_workers_factory = we_workers_factory,
             batch_size=batch_size,

@@ -31,6 +31,7 @@ class UWorker(Worker):
         self.reweighting_execution = reweighting_execution
         
         # Computation device
+        
         dev = local_device or "cuda" if torch.cuda.is_available() else "cpu"
                 
         # Batch size
@@ -143,11 +144,11 @@ class Updater(Worker):
         
         # Simulation step
         sim_dict, sys_names, nnp_prime = self.sim_step(steps, output_period)
-        torch.cuda.empty_cache() 
+        #torch.cuda.empty_cache() 
         
         # Reweighting step
         train_losses, val_losses, losses_dict = self.reweight_step(sim_dict, losses_dict, sys_names, nnp_prime, val=val)
-        torch.cuda.empty_cache() 
+        #torch.cuda.empty_cache() 
         
         # Set weights
         weights = self.local_we_worker.get_weights()
@@ -203,7 +204,6 @@ class Updater(Worker):
 
             # Update for all the simulated systems
             for i in range(0, num_systems, self.batch_size):
-                
                 if self.batch_size > len(tmp_names) and self.batch_size < num_systems:
                     n_to_add = self.batch_size - len(tmp_names)
                     n_to_sample = len(sys_names) - n_to_add
@@ -214,7 +214,7 @@ class Updater(Worker):
                 
                 grads_to_average = []
                 # Mini-batch update
-                for idx, s in enumerate(batch_names):                    
+                for idx, s in enumerate(batch_names):   
                     system_result = {key:sim_dict[key][idx] if sim_dict[key] else None for key in sim_dict.keys()}
                     self.buffers[s] = {'native_coords': [],
                                        'free_coords': []
@@ -224,7 +224,6 @@ class Updater(Worker):
                     try: 
                         if val == False: 
                             grads, loss, values_dict = self.local_we_worker.compute_gradients(**system_result, val=val) 
-                            
                             if grads is not None:
                                 grads_to_average.append(grads)                                
                             train_losses.append(loss)
@@ -248,12 +247,11 @@ class Updater(Worker):
                     else:
                         losses_dict['val_avg_metric'].append(values_dict['val_avg_metric'])
 
-                    torch.cuda.empty_cache()
-                    
                 # Optim step
                 if len(grads_to_average) > 0:
                     grads_to_average = average_gradients(grads_to_average)
                     self.local_we_worker.apply_gradients(grads_to_average)
+                torch.cuda.empty_cache()
         
         return train_losses, val_losses, losses_dict
         
