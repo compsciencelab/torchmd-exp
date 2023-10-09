@@ -52,12 +52,6 @@ def main():
     elif optimizer == 'adamw':
         optim = torch.optim.AdamW(nnp.model.parameters(), lr=args.lr, betas=(args.beta1, args.beta2), weight_decay=0.1) 
 
-    if args.lr_decay < 1.0:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, factor=args.lr_decay, min_lr=args.min_lr, patience=0)
-        scheduler.step(1)
-    else:
-        scheduler = None
-
     # Save num_params
     input_file = open(os.path.join(args.log_dir, 'input.yaml'), 'a')
     input_file.write(f'num_parameters: {sum(p.numel() for p in nnp.model.parameters())}')
@@ -170,8 +164,6 @@ def main():
         
         loss = learner.get_train_loss()
         val_loss = learner.get_val_loss() if len(val_set) > 0 else None   
-        if (epoch % 10) == 0:         
-            scheduler.step(1)
 
         print(f'EPOCH {epoch}. Train loss {loss}. Val loss {val_loss}')
         
